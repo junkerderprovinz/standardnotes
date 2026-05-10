@@ -79,7 +79,7 @@ every additional client write makes the situation worse.
   clients require HTTPS; without it, `Secure` cookies are dropped and
   the session loop above can trigger.
 - **Wrong host or unreachable network** for `DB_HOST` / `REDIS_HOST`.
-  This template asks for IP addresses (e.g. `192.168.20.71`) — they
+  This template asks for IP addresses (e.g. `192.168.x.x`) — they
   are unambiguous across Unraid's bridge / `br0` / VLAN setups. Make
   sure the IP is static (DHCP reservation or fixed) so it does not
   change on container restart.
@@ -263,27 +263,25 @@ Hit **Apply**. First start runs the schema migrations, which can take
 20–60 seconds. Watch the container log; you should eventually see the
 API gateway listening on port 3000.
 
-#### Example values from a test deployment
+#### Example values (shape reference)
 
-The values below are from one user's working `standardnotes.bottich.lol`
-test setup. Use them as a shape reference — substitute your own hosts,
-domain, and DB password (never paste a real password into a public
-template).
+Substitute your own hosts, domain, and DB password (never paste a real
+password into a public template).
 
 | Field | Example value |
 |---|---|
-| Public sync URL | `https://standardnotes.bottich.lol` |
-| Server container static IP | `192.168.20.38` |
-| MariaDB Host | `192.168.20.71` |
+| Public sync URL | `https://standardnotes.mydomain.tld` |
+| Server container static IP | `192.168.x.x` |
+| MariaDB Host | `192.168.x.x` |
 | MariaDB Port | `3306` |
-| MariaDB User | `junkerderprovinz` |
+| MariaDB User | `std_notes_user` |
 | MariaDB Password | *(your own — store in password manager)* |
-| MariaDB Database Name | `standardnotes` *(already created)* |
+| MariaDB Database Name | `standard_notes_db` *(already created)* |
 | Database Driver (`DB_TYPE`) | `mysql` *(internal driver value required for MariaDB — see § 6)* |
-| Redis Host | `192.168.20.72` *(no auth in this test setup)* |
+| Redis Host | `192.168.x.x` |
 | Redis Port | `6379` |
-| Cookie Domain | `standardnotes.bottich.lol` |
-| Public Files Server URL | *(optional)* `https://files.standardnotes.bottich.lol` — leave empty to skip attachments — see [§ 8](#8-reverse-proxy) |
+| Cookie Domain | `standardnotes.mydomain.tld` |
+| Public Files Server URL | *(optional)* `https://files.standardnotes.mydomain.tld` — leave empty to skip attachments — see [§ 8](#8-reverse-proxy) |
 
 > 💡 This template asks for **IP addresses** for the MariaDB and Redis
 > hosts. IPs are unambiguous across Unraid's bridge / `br0` / VLAN
@@ -359,7 +357,7 @@ Any 6.x or 7.x Redis container works. Recommended:
 - **Redis-Official** (Community Applications), default port 6379, no auth.
 
 Set the Redis Host field to the **IP address** of your Redis container
-(e.g. `192.168.20.72`) and `REDIS_PORT` to `6379`.
+(e.g. `192.168.x.x`) and `REDIS_PORT` to `6379`.
 
 > 🔒 **Redis security.** This community template intentionally does
 > **not** expose a Redis password field. The official
@@ -378,20 +376,20 @@ Set the Redis Host field to the **IP address** of your Redis container
 
 | Variable | Default | Description |
 |---|---|---|
-| `DB_HOST` | *(required)* | IP address of your MariaDB container, e.g. `192.168.20.71` |
+| `DB_HOST` | *(required)* | IP address of your MariaDB container, e.g. `192.168.x.x` |
 | `DB_PORT` | `3306` | DB port |
 | `DB_USERNAME` | `std_notes_user` | DB user |
 | `DB_PASSWORD` | *(required)* | DB password |
 | `DB_DATABASE` | `standard_notes_db` | DB name |
 | `DB_TYPE` | `mysql` | **Internal driver value required for MariaDB.** Standard Notes / TypeORM uses the `mysql` driver string to talk to MariaDB — leave at `mysql`. |
-| `REDIS_HOST` | *(required)* | IP address of your Redis container, e.g. `192.168.20.72` |
+| `REDIS_HOST` | *(required)* | IP address of your Redis container, e.g. `192.168.x.x` |
 | `REDIS_PORT` | `6379` | Redis port |
 | `CACHE_TYPE` | `redis` | Leave at `redis` |
 | `AUTH_JWT_SECRET` | *(required)* | 32-byte hex — see [§ 4](#4-generating-secrets) |
 | `AUTH_SERVER_ENCRYPTION_SERVER_KEY` | *(required)* | 32-byte hex — see [§ 4](#4-generating-secrets) |
 | `VALET_TOKEN_SECRET` | *(required)* | 32-byte hex — see [§ 4](#4-generating-secrets) |
 | `PUBLIC_FILES_SERVER_URL` | *(empty)* | Public HTTPS URL of the files server, if reverse-proxied separately |
-| `COOKIE_DOMAIN` | *(empty)* | Optional but **strongly recommended** behind a reverse proxy. Must match the public sync host (e.g. `notes.example.com`). HTTPS is required for `Secure` cookies outside `localhost`. Wrong value → `No cookies provided for cookie-based session token` and possible sync loop. See [§ 0](#0-sync-loop--duplicate-notes-guardrails). |
+| `COOKIE_DOMAIN` | *(empty)* | Public sync domain, e.g. `standardnotes.mydomain.tld`. Clients enter `https://standardnotes.mydomain.tld` as the Custom Sync Server — no extra "container domain" env var is needed for this template. Strongly recommended behind a reverse proxy; HTTPS is required for `Secure` cookies outside `localhost`. Wrong value → `No cookies provided for cookie-based session token` and possible sync loop. See [§ 0](#0-sync-loop--duplicate-notes-guardrails). |
 | `STANDARDNOTES_IMAGE_TAG` | `latest` | Repository tag used by the Unraid template. Default `standardnotes/server:latest`. Pin a known-good tag if `latest` introduces session/sync regressions — change with care, see [`docs/sync-loop-troubleshooting.md`](docs/sync-loop-troubleshooting.md). |
 
 ### Ports & Volumes
@@ -433,20 +431,20 @@ TLS in your reverse proxy.
 ### Nginx Proxy Manager (NPM)
 
 A common Unraid setup is **Nginx Proxy Manager** running on the same
-LAN as the Standard Notes container. Example using the test deployment
-above:
+LAN as the Standard Notes container. Example shape (substitute your
+own LAN IPs and domain):
 
 | | Value |
 |---|---|
-| NPM host | `192.168.20.11` |
-| Standard Notes server static IP | `192.168.20.38` |
-| Public domain | `standardnotes.bottich.lol` |
+| NPM host | `192.168.x.x` |
+| Standard Notes server static IP | `192.168.x.x` |
+| Public domain | `standardnotes.mydomain.tld` |
 
 In the NPM UI, **Hosts → Proxy Hosts → Add Proxy Host**:
 
-- **Domain Names:** `standardnotes.bottich.lol`
+- **Domain Names:** `standardnotes.mydomain.tld`
 - **Scheme:** `http`
-- **Forward Hostname / IP:** `192.168.20.38`
+- **Forward Hostname / IP:** `192.168.x.x` *(StandardNotes container IP)*
 - **Forward Port:** `3000`
 - **Block Common Exploits:** on
 - **Websockets Support:** on
@@ -456,8 +454,8 @@ In the NPM UI, **Hosts → Proxy Hosts → Add Proxy Host**:
 
 Then in the Standard Notes template, set:
 
-- `COOKIE_DOMAIN=standardnotes.bottich.lol`
-- (optional) `PUBLIC_FILES_SERVER_URL=https://files.standardnotes.bottich.lol`
+- `COOKIE_DOMAIN=standardnotes.mydomain.tld`
+- (optional) `PUBLIC_FILES_SERVER_URL=https://files.standardnotes.mydomain.tld`
   if and only if you also create a separate proxy host for the files
   server (see below).
 
@@ -480,9 +478,10 @@ shape. Two options:
    minimal community-template install.
 2. **Two NPM proxy hosts / two subdomains (recommended for full
    attachment support).** Add a second NPM proxy host, e.g.
-   `files.standardnotes.bottich.lol` → `192.168.20.38:3125`, with its
-   own Let's Encrypt certificate. Then set
-   **Public Files Server URL** = `https://files.standardnotes.bottich.lol`
+   `files.standardnotes.mydomain.tld` → `192.168.x.x:3125` (the
+   StandardNotes container IP), with its own Let's Encrypt
+   certificate and **Force SSL** on. Then set
+   **Public Files Server URL** = `https://files.standardnotes.mydomain.tld`
    in the template.
 
 > ⚠️ **Same-domain / path-prefix proxying is not recommended for this
@@ -501,14 +500,14 @@ If you are not using NPM, a minimal SWAG (`nginx`) location block:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name standardnotes.bottich.lol;
+    server_name standardnotes.mydomain.tld;
 
     include /config/nginx/ssl.conf;
 
     location / {
         include /config/nginx/proxy.conf;
         resolver 127.0.0.11 valid=30s;
-        set $upstream_app 192.168.20.38;
+        set $upstream_app 192.168.x.x;
         set $upstream_port 3000;
         set $upstream_proto http;
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
@@ -520,8 +519,8 @@ server {
 ```
 
 If you reverse-proxy the **files server** under a separate hostname
-(e.g. `files.standardnotes.bottich.lol`), set
-`PUBLIC_FILES_SERVER_URL=https://files.standardnotes.bottich.lol` in
+(e.g. `files.standardnotes.mydomain.tld`), set
+`PUBLIC_FILES_SERVER_URL=https://files.standardnotes.mydomain.tld` in
 the template's *Public Files Server URL* field.
 
 ---

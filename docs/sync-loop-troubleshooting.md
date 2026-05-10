@@ -57,7 +57,7 @@ Redis is unreachable, sync de-duplication and session state get
 inconsistent — a known precursor to duplicate cascades.
 
 - [ ] In the Unraid template, **Redis Host** is set to the **IP
-      address** of your Redis container (e.g. `192.168.20.72`).
+      address** of your Redis container (e.g. `192.168.x.x`).
       Use a static / DHCP-reserved address so the IP doesn't change
       on container restart.
 - [ ] `REDIS_PORT=6379` (or whatever your Redis container actually
@@ -68,9 +68,9 @@ inconsistent — a known precursor to duplicate cascades.
     ```bash
     docker exec -it StandardNotes sh
     # inside the container (replace with your Redis IP):
-    nc -zv 192.168.20.72 6379    # should print "open"
+    nc -zv 192.168.x.x 6379    # should print "open"
     # or, if nc is unavailable:
-    timeout 2 sh -c 'cat </dev/tcp/192.168.20.72/6379' && echo OK
+    timeout 2 sh -c 'cat </dev/tcp/192.168.x.x/6379' && echo OK
     ```
 
 - [ ] **Expected failure mode if wrong:** the server log emits
@@ -86,7 +86,7 @@ inconsistent — a known precursor to duplicate cascades.
 A half-migrated database is a known cause of strange sync behaviour.
 
 - [ ] `DB_HOST` points at the **IP address** of your MariaDB
-      container (e.g. `192.168.20.71`). Use a static / DHCP-reserved
+      container (e.g. `192.168.x.x`). Use a static / DHCP-reserved
       address.
 - [ ] `DB_PORT=3306`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE` all
       match what you created in MariaDB.

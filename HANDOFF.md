@@ -5,6 +5,57 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
+## Latest pass — generic examples, visible URL/Cookie fields, files-port relocation
+
+Per direct user request. Scope kept small.
+
+- **No real domain anywhere in templates/docs/examples.** Replaced
+  `standardnotes.bottich.lol` / `files.standardnotes.bottich.lol`
+  with generic `standardnotes.mydomain.tld` /
+  `files.standardnotes.mydomain.tld` across `README.md`,
+  `templates/standardnotes-server.xml`, `examples/.env.example`, and
+  the `docs/` files. The "test deployment" sample table in the
+  README is now a generic shape reference (no real LAN IPs, no real
+  user/db names).
+- **`192.168.x.x` placeholders.** Every host example for
+  `DB_HOST` / `REDIS_HOST` / NPM / SWAG / nginx upstream now uses
+  `192.168.x.x` (no real `192.168.20.*` addresses).
+- **XML — concise required wording per user request.**
+  - `MariaDB Host` description: *"IP address of your MariaDB
+    container."* + default `192.168.x.x`.
+  - `MariaDB Password` description: *"Password for the MariaDB user
+    above."*.
+  - `Redis Host` description: *"IP address of your Redis
+    container."* + default `192.168.x.x`.
+- **Visible (not hidden/advanced) fields.** `PUBLIC_FILES_SERVER_URL`
+  and `COOKIE_DOMAIN` are now `Display="always"` so users see them
+  on the main template page. They remain `Required="false"`.
+- **Files Server Port repositioned + clearer NPM steps.** The
+  `Files Server Port` `<Config>` is now placed directly under
+  `Public Files Server URL` in the XML (moved out of the PORTS
+  block at the top). Its description spells out the second-NPM-host
+  recipe: Domain `files.standardnotes.mydomain.tld`, Scheme http,
+  Forward IP = StandardNotes container IP, Forward Port `3125`,
+  Websockets ON, Let's Encrypt + Force SSL + HTTP/2 ON.
+- **`COOKIE_DOMAIN` doubles as the public sync domain note.** Its
+  description now states explicitly that clients enter
+  `https://standardnotes.mydomain.tld` as their Custom Sync Server
+  and that **no separate "container domain" env var is required**
+  for this template (the upstream `standardnotes/server` image does
+  not document one — only `COOKIE_DOMAIN` and
+  `PUBLIC_FILES_SERVER_URL` are exposed). README's `COOKIE_DOMAIN`
+  table row reflects this.
+- **Validation.**
+  - `python3 -m xml.etree.ElementTree` parses
+    `templates/standardnotes-server.xml` cleanly.
+  - `<Config>` order verified: API/Gateway Port → Paths → MariaDB
+    block → Redis block → Secrets → Public Files Server URL →
+    Files Server Port → Cookie Domain.
+  - `grep -rn "bottich\|192\.168\.20\."` against `templates/`,
+    `docs/`, `README.md`, `examples/` returns no hits. (HANDOFF.md
+    intentionally still references the old values as historical
+    context for prior passes.)
+
 ## Latest pass — UI polish, IP-only host wording, README badges
 
 This pass tightens the Unraid UI presentation, clarifies the

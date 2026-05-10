@@ -81,9 +81,7 @@
           Description="HTTP port of the Standard Notes API gateway. Put behind a reverse proxy with HTTPS — do NOT expose directly to the public internet."
           Type="Port" Display="always" Required="true" Mask="false">3000</Config>
 
-  <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
-          Description="Files server port. Upstream maps host 3125 → container 3104. Keep this default unless you know why you are changing it."
-          Type="Port" Display="always" Required="true" Mask="false">3125</Config>
+  <!-- Files Server Port is defined further below, directly under Public Files Server URL. -->
 
   <!-- ========================================================
        PATHS
@@ -102,9 +100,9 @@
   <!-- ========================================================
        DATABASE (must be supplied by a separate MariaDB container)
        ======================================================== -->
-  <Config Name="MariaDB Host" Target="DB_HOST" Default="" Mode=""
-          Description="REQUIRED. IP address of your MariaDB container, e.g. 192.168.20.71. IP is preferred — it is unambiguous across networks/VLANs and won't change due to Docker bridge restarts."
-          Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="MariaDB Host" Target="DB_HOST" Default="192.168.x.x" Mode=""
+          Description="IP address of your MariaDB container."
+          Type="Variable" Display="always" Required="true" Mask="false">192.168.x.x</Config>
 
   <Config Name="MariaDB Port" Target="DB_PORT" Default="3306" Mode=""
           Description="MariaDB server port. Default 3306."
@@ -115,7 +113,7 @@
           Type="Variable" Display="always" Required="true" Mask="false">std_notes_user</Config>
 
   <Config Name="MariaDB Password" Target="DB_PASSWORD" Default="" Mode=""
-          Description="REQUIRED. Password for the MariaDB user above. Use the password you set when creating the DB user (no need to generate a new one unless you are also creating the user now)."
+          Description="Password for the MariaDB user above."
           Type="Variable" Display="always" Required="true" Mask="true"/>
 
   <Config Name="MariaDB Database Name" Target="DB_DATABASE" Default="standard_notes_db" Mode=""
@@ -129,9 +127,9 @@
   <!-- ========================================================
        CACHE (must be supplied by a separate Redis container)
        ======================================================== -->
-  <Config Name="Redis Host" Target="REDIS_HOST" Default="" Mode=""
-          Description="REQUIRED. IP address of your Redis container, e.g. 192.168.20.72. IP is preferred — unambiguous and stable. SECURITY: keep Redis on a trusted VLAN / firewall it off the public internet. The official Standard Notes self-host image does not document a Redis password env; this template therefore exposes host/port only. If your image fork supports auth, verify the env var name first before adding it."
-          Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Redis Host" Target="REDIS_HOST" Default="192.168.x.x" Mode=""
+          Description="IP address of your Redis container."
+          Type="Variable" Display="always" Required="true" Mask="false">192.168.x.x</Config>
 
   <Config Name="Redis Port" Target="REDIS_PORT" Default="6379" Mode=""
           Description="REQUIRED. Redis server port. Default 6379. Test with: nc -zv &lt;redis-host&gt; 6379 from inside this container."
@@ -159,16 +157,20 @@
           Type="Variable" Display="always" Required="true" Mask="true"/>
 
   <!-- ========================================================
-       ADVANCED / OPTIONAL
+       PUBLIC URLs / COOKIES (visible — needed for client setup)
        ======================================================== -->
   <Config Name="Public Files Server URL"
           Target="PUBLIC_FILES_SERVER_URL" Default="" Mode=""
-          Description="Optional. Public HTTPS URL of the files server (attachments). Example: https://files.standardnotes.bottich.lol. Set ONLY if you reverse-proxy the files server on its own subdomain. Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
-          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+          Description="Optional. Public HTTPS URL of the files server (attachments). Example: https://files.standardnotes.mydomain.tld. Set ONLY if you reverse-proxy the files server on its own subdomain (see Files Server Port below). Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
+          Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
+          Description="Host port for the files server (container 3104). To enable attachments, create a SECOND reverse-proxy host: e.g. in Nginx Proxy Manager add a Proxy Host with Domain Names = files.standardnotes.mydomain.tld, Scheme = http, Forward Hostname/IP = this StandardNotes container's IP, Forward Port = 3125, Websockets ON, then on the SSL tab request a Let's Encrypt cert and enable Force SSL + HTTP/2. Then set Public Files Server URL above to https://files.standardnotes.mydomain.tld. Keep host port 3125 unless you also change the proxy host's Forward Port."
+          Type="Port" Display="always" Required="true" Mask="false">3125</Config>
 
   <Config Name="Cookie Domain"
           Target="COOKIE_DOMAIN" Default="" Mode=""
-          Description="Optional but STRONGLY RECOMMENDED behind a reverse proxy. Must match the public sync host (e.g. standardnotes.bottich.lol). HTTPS is required for Secure cookies outside localhost. Wrong/empty value can trigger 'No cookies provided for cookie-based session token' and a /v1/items session loop linked to runaway note duplication. See docs/sync-loop-troubleshooting.md."
-          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+          Description="Public sync domain used by Standard Notes clients, e.g. standardnotes.mydomain.tld. Clients enter https://standardnotes.mydomain.tld as their Custom Sync Server — no separate 'container domain' env var is required for this template. Strongly recommended behind a reverse proxy; HTTPS is required for Secure cookies outside localhost. Wrong/empty value can trigger 'No cookies provided for cookie-based session token' and a /v1/items session loop linked to runaway note duplication. See docs/sync-loop-troubleshooting.md."
+          Type="Variable" Display="always" Required="false" Mask="false"/>
 
 </Container>

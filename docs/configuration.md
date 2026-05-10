@@ -7,7 +7,7 @@ upstream [`.env.sample`](https://github.com/standardnotes/server/blob/main/.env.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DB_HOST` | *required* | IP address of your MariaDB container, e.g. `192.168.20.71`. |
+| `DB_HOST` | *required* | IP address of your MariaDB container, e.g. `192.168.x.x`. |
 | `DB_PORT` | `3306` | |
 | `DB_USERNAME` | `std_notes_user` | |
 | `DB_PASSWORD` | *required* | |
@@ -32,7 +32,7 @@ Standard Notes container.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `REDIS_HOST` | *required* | IP address of your Redis container, e.g. `192.168.20.72`. |
+| `REDIS_HOST` | *required* | IP address of your Redis container, e.g. `192.168.x.x`. |
 | `REDIS_PORT` | `6379` | |
 | `CACHE_TYPE` | `redis` | Leave at this value. |
 
