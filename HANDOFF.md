@@ -1308,6 +1308,83 @@ changes only need to be replicated across both repos.
   `templates/standardnotes-server.xml`. `COOKIE_DOMAIN` and
   `PUBLIC_FILES_SERVER_URL` examples updated accordingly.
 
+## Latest pass — LocalStack bootstrap script (SNS/SQS init)
+
+User reported: LocalStack TCP `4566` reachable from
+`StandardNotesServer` and Redis reachable, but **account creation
+still hangs and the first note duplicates infinitely**. Diagnosed
+against upstream `docker-compose.example.yml` — the official compose
+mounts
+[`docker/localstack_bootstrap.sh`](https://raw.githubusercontent.com/standardnotes/server/main/docker/localstack_bootstrap.sh)
+into `/etc/localstack/init/ready.d/`, which creates the SNS topics
+and SQS queues `standardnotes/server` workers expect
+(`auth-local-queue`, `syncing-server-local-queue`,
+`files-local-queue`, `revisions-server-local-queue`,
+`analytics-local-queue`, `scheduler-local-queue`, plus matching
+`*-local-topic` topics). Without this, LocalStack is reachable but
+**empty**, and `standardnotes/server` workers loop on missing-queue
+errors with no `ENOTFOUND` line — the exact reported symptom.
+
+Changes in this pass:
+
+- **`scripts/localstack_bootstrap.sh`** — new file. Copied verbatim
+  from upstream `standardnotes/server` `docker/localstack_bootstrap.sh`
+  (URL above). Header block notes the upstream source and AGPL-3.0
+  licence inheritance. `chmod +x` on the file, `bash -n` validated.
+- **`templates/standardnotes-localstack.xml`** — added a new required
+  Path mapping *LocalStack Bootstrap Script* with
+  `Target="/etc/localstack/init/ready.d/localstack_bootstrap.sh"` and
+  `Default="/mnt/user/appdata/standardnotes/localstack_bootstrap.sh"`.
+  Overview text gained a "REQUIRED INIT SCRIPT" block explaining what
+  it does and giving the exact `curl` + `chmod` host-prep commands.
+  XML re-validated with `ET.parse` after the edit.
+- **`README.md`** —
+  - § 0 *Common causes*: added "LocalStack reachable but uninitialised
+    (no topics / queues)" bullet with the `awslocal sqs list-queues`
+    / `sns list-topics` verification snippet.
+  - § 0 *Emergency checklist*, step 5: now also verifies queues/topics
+    exist, not just TCP reachability.
+  - § 0 *Emergency bootstrap (LocalStack already running, no queues)*:
+    new subsection with `docker cp` + `docker exec` recipe for an
+    in-place fix on a running container.
+  - § 3 Step 2: prepended the host-prep `mkdir` / `curl` / `chmod +x`
+    commands and the post-start `awslocal` verification block.
+- **`docs/configuration.md`** — new subsection *Required bootstrap
+  (SNS topics / SQS queues)* under LocalStack, mirroring the Step 2
+  install instructions and linking back to the emergency bootstrap.
+- **`docs/sync-loop-troubleshooting.md`** —
+  - § 2a: TCP/DNS checks now followed by a "TCP-reachable is not
+    enough" verification of `awslocal sqs list-queues` / `sns
+    list-topics`.
+  - § 2a-bis (new): full troubleshooting checklist for the specific
+    failure mode "TCP fine, hostname resolves, queues missing", with
+    both the host-side fix and the in-place `docker cp` / `docker
+    exec bash` emergency procedure.
+  - § 6 log-table: added a row distinguishing missing-queue errors
+    (no `ENOTFOUND`) from the § 2a `ENOTFOUND localstack` case.
+- Preserved all prior guidance: static IP / `--add-host` for
+  `br0`/macvlan/VLAN, `COOKIE_DOMAIN` shape, files port `3125:3104`,
+  MariaDB-only DB, container names `StandardNotesServer` /
+  `StandardNotes-LocalStack`.
+
+Validation summary for this pass:
+
+- `bash -n scripts/localstack_bootstrap.sh` → OK.
+- `python3 xml.etree.ElementTree.parse` on both templates and both
+  `.github/assets/*.svg` → all OK.
+- `yaml.safe_load` on both `.github/workflows/*.yml` → both OK.
+- `grep -rnE "REPLACE_WITH_[A-Z_]+" templates README.md docs scripts`
+  → no hits.
+
+Files changed in this pass:
+
+- `scripts/localstack_bootstrap.sh` (new, executable)
+- `templates/standardnotes-localstack.xml`
+- `README.md`
+- `docs/configuration.md`
+- `docs/sync-loop-troubleshooting.md`
+- `HANDOFF.md` (this section)
+
 ## Not done (out of scope per instructions)
 
 - No `git remote add` / `git push`.

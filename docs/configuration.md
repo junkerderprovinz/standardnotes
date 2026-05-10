@@ -84,6 +84,55 @@ docker exec StandardNotesServer node -e "const net=require('net'); \
 The first line must print a non-empty result; the second must print
 `LocalStack TCP connected`.
 
+### Required bootstrap (SNS topics / SQS queues)
+
+LocalStack starts **empty**. The official `standardnotes/server`
+image expects a fixed set of SNS topics and SQS queues to exist
+(`auth-local-queue`, `syncing-server-local-queue`,
+`files-local-queue`, `revisions-server-local-queue`,
+`analytics-local-queue`, `scheduler-local-queue`, and the matching
+`*-local-topic` topics). Upstream's `docker-compose.example.yml`
+mounts
+[`docker/localstack_bootstrap.sh`](https://raw.githubusercontent.com/standardnotes/server/main/docker/localstack_bootstrap.sh)
+into `/etc/localstack/init/ready.d/` so LocalStack runs it once on
+startup.
+
+This template ships the same script at
+[`scripts/localstack_bootstrap.sh`](../scripts/localstack_bootstrap.sh)
+and the LocalStack Unraid template exposes a **required** Path
+mapping (*LocalStack Bootstrap Script*) at container target
+`/etc/localstack/init/ready.d/localstack_bootstrap.sh`. Default host
+path is `/mnt/user/appdata/standardnotes/localstack_bootstrap.sh`.
+
+**Before** first start of the LocalStack container, place the
+script on the host:
+
+```bash
+mkdir -p /mnt/user/appdata/standardnotes
+curl -fsSL -o /mnt/user/appdata/standardnotes/localstack_bootstrap.sh \
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh
+chmod +x /mnt/user/appdata/standardnotes/localstack_bootstrap.sh
+```
+
+Once LocalStack is running, verify the bootstrap created the
+expected resources:
+
+```bash
+docker exec StandardNotes-LocalStack \
+  awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+docker exec StandardNotes-LocalStack \
+  awslocal --endpoint-url=http://localhost:4566 sns list-topics
+```
+
+Empty `Queues: []` / `Topics: []` means the init script never ran
+(most often because the host file was missing on first start, or the
+Path mapping was removed). Without these resources, TCP `4566` will
+still connect, but `standardnotes/server` workers loop on missing
+queues — account creation hangs and the first note can duplicate
+infinitely. To fix in place on an already-running LocalStack, see
+the *Emergency bootstrap* recipe in the
+[main README](../README.md#emergency-bootstrap-localstack-already-running-no-queues).
+
 ## Secrets
 
 All three are required and must be set to a 32-byte hex string. Generate

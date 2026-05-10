@@ -85,6 +85,30 @@ Run these in order. Do **not** keep editing notes between steps.
     you see it, fix LocalStack reachability *before* reconnecting
     any client.
 
+    **TCP-reachable is not enough — the SNS / SQS resources must
+    also exist.** LocalStack starts empty; `standardnotes/server`
+    workers expect a fixed set of topics and queues created by
+    upstream's `docker/localstack_bootstrap.sh` (this repo ships it
+    at `scripts/localstack_bootstrap.sh` and the LocalStack template
+    mounts it at `/etc/localstack/init/ready.d/`). If the host file
+    was missing at first start, the duplicate-loop symptoms persist
+    even with LocalStack TCP connected. Verify:
+
+    ```bash
+    docker exec StandardNotes-LocalStack \
+      awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+    docker exec StandardNotes-LocalStack \
+      awslocal --endpoint-url=http://localhost:4566 sns list-topics
+    ```
+
+    Both must list `*-local-queue` / `*-local-topic` entries
+    (`auth-local-queue`, `syncing-server-local-queue`,
+    `files-local-queue`, `revisions-server-local-queue`,
+    `analytics-local-queue`, `scheduler-local-queue` and the matching
+    topics). Empty `Queues: []` / `Topics: []` means the bootstrap
+    never ran — fix in place with the *Emergency bootstrap* recipe in
+    [§ 2a-bis](#2a-bis-localstack-bootstrap-snssqs-queues-missing) below.
+
     > 📌 **Static IP / `br0` / macvlan / VLAN.** Docker's embedded
     > DNS (`127.0.0.11`) only resolves container names / aliases
     > when both containers share a **user-defined Docker network**.
@@ -294,6 +318,76 @@ worker logs **must not** show `ENOTFOUND localstack`.
 
 ---
 
+## 2a-bis. LocalStack bootstrap (SNS/SQS queues missing)
+
+Distinct failure from § 2a. Here `getent hosts localstack` resolves
+and `localstack:4566` accepts TCP — but `sqs list-queues` /
+`sns list-topics` come back **empty**. `standardnotes/server`'s
+workers then loop on missing-queue errors (no `ENOTFOUND` line in
+that case — symptom is account creation hanging and the first note
+duplicating infinitely on the client).
+
+LocalStack starts empty. The upstream
+[`docker/localstack_bootstrap.sh`](https://raw.githubusercontent.com/standardnotes/server/main/docker/localstack_bootstrap.sh)
+script creates the required topics / queues; LocalStack runs anything
+under `/etc/localstack/init/ready.d/` once it becomes ready. This
+repo ships the same script at `scripts/localstack_bootstrap.sh` and
+the Unraid LocalStack template includes a required *LocalStack
+Bootstrap Script* Path mapping.
+
+- [ ] Verify the script ran:
+
+    ```bash
+    docker exec StandardNotes-LocalStack \
+      awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+    docker exec StandardNotes-LocalStack \
+      awslocal --endpoint-url=http://localhost:4566 sns list-topics
+    ```
+
+    Both must list `auth-local-queue`, `syncing-server-local-queue`,
+    `files-local-queue`, `revisions-server-local-queue`,
+    `analytics-local-queue`, `scheduler-local-queue` and the matching
+    `*-local-topic` topics.
+
+- [ ] **If empty:** place the script on the host so future restarts
+      run the bootstrap:
+
+    ```bash
+    mkdir -p /mnt/user/appdata/standardnotes
+    curl -fsSL -o /mnt/user/appdata/standardnotes/localstack_bootstrap.sh \
+      https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh
+    chmod +x /mnt/user/appdata/standardnotes/localstack_bootstrap.sh
+    ```
+
+    Then **either** recreate the LocalStack container (`init/ready.d/`
+    only fires once per container lifetime, so a plain restart is not
+    always enough on older LocalStack images) **or** bootstrap the
+    running container in place:
+
+    ```bash
+    curl -fsSL -o /tmp/localstack_bootstrap.sh \
+      https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh
+    docker cp /tmp/localstack_bootstrap.sh \
+      StandardNotes-LocalStack:/tmp/localstack_bootstrap.sh
+    docker exec StandardNotes-LocalStack \
+      bash /tmp/localstack_bootstrap.sh
+    ```
+
+    After the script reports `all topics are:` / `all queues are:`,
+    re-run `sqs list-queues` / `sns list-topics` to confirm, then
+    **restart `StandardNotesServer`** so its workers reconnect against
+    the now-populated SNS/SQS.
+
+- [ ] **Expected failure mode if wrong:** TCP probe to
+      `localstack:4566` succeeds; `getent hosts localstack` returns a
+      valid IP; **but** account creation hangs in the client and the
+      first note replicates without bound. `files-worker.log` does
+      *not* show `ENOTFOUND` — instead it shows repeated SQS errors
+      against non-existent queue names. This is the case to suspect
+      whenever § 2a passes but duplication persists.
+
+---
+
 ## 3. MariaDB reachability and migrations
 
 A half-migrated database is a known cause of strange sync behaviour.
@@ -408,6 +502,7 @@ docker logs -f StandardNotesServer
 | `ECONNREFUSED` against your Redis host | Redis container is down, on a different network, or the host/port is wrong. See § 2. |
 | Redis connection timeouts (`Operation timed out`) against your Redis host | Firewall / VLAN / `br0` routing problem between the Docker network and the Redis host. See § 2. |
 | `SQSError: SQS receive message failed: getaddrinfo ENOTFOUND localstack` (in `/var/lib/server/logs/files-worker.log`) | LocalStack missing, or the hostname `localstack` does not resolve from `StandardNotesServer`. LocalStack is required, not optional — see § 2a. |
+| Repeated SQS errors referencing `*-local-queue` but **no** `ENOTFOUND` line; account creation hangs; first note duplicates infinitely | LocalStack is reachable but **empty** — the `localstack_bootstrap.sh` init script never ran. See § 2a-bis. |
 | `ECONNREFUSED` against your DB host | MariaDB is down, on a different network, or credentials/host are wrong. See § 3. |
 | `/v1/items` returning 401 in a tight loop | Session not accepted by the server — almost always cookie / `COOKIE_DOMAIN` / HTTPS. See § 4. |
 | `/v1/items` returning 500 in a tight loop | Server-side error — check earlier lines for the underlying exception (DB, Redis, migrations). |

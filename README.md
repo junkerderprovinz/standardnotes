@@ -82,6 +82,32 @@ every additional client write makes the situation worse.
   the worker pipeline and is a known precursor to sync / duplication
   problems — LocalStack is **not** optional in practice, see
   [§ 2](#2-architecture).
+- **LocalStack reachable but uninitialised (no topics / queues).**
+  Even when `localstack:4566` is connectable, LocalStack starts
+  **empty**. The official `standardnotes/server` image expects a
+  fixed set of SNS topics and SQS queues (`auth-local-queue`,
+  `syncing-server-local-queue`, `files-local-queue`,
+  `revisions-server-local-queue`, …). Upstream's
+  `docker-compose.example.yml` mounts
+  [`docker/localstack_bootstrap.sh`](https://raw.githubusercontent.com/standardnotes/server/main/docker/localstack_bootstrap.sh)
+  into `/etc/localstack/init/ready.d/` to create them. This template
+  ships the same script at
+  [`scripts/localstack_bootstrap.sh`](scripts/localstack_bootstrap.sh)
+  and the LocalStack template has a **required** *LocalStack
+  Bootstrap Script* Path mapping. **Symptoms when missing:** TCP
+  4566 connects fine and `getent hosts localstack` returns an IP,
+  but **account creation hangs** and the **first note duplicates
+  infinitely** because the workers loop on missing queues. Confirm
+  with:
+  ```bash
+  docker exec StandardNotes-LocalStack \
+    awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+  docker exec StandardNotes-LocalStack \
+    awslocal --endpoint-url=http://localhost:4566 sns list-topics
+  ```
+  Both must list the `*-local-queue` / `*-local-topic` entries. An
+  empty `Queues: []` / `Topics: []` means the bootstrap script did
+  not run — see [Step 2 of the Quick Start](#step-2--start-localstack-required-companion).
 - **Bad `COOKIE_DOMAIN` / session-cookie handling behind a reverse
   proxy.** Symptoms include `No cookies provided for cookie-based
   session token` in the server log and a `/v1/items` request loop.
@@ -192,6 +218,25 @@ duplicates.
     message failed: getaddrinfo ENOTFOUND localstack`; if you see it,
     fix LocalStack reachability *before* reconnecting any client.
 
+    Then — **TCP-reachable is not enough**. LocalStack starts empty;
+    the official `standardnotes/server` workers expect a fixed set of
+    SNS topics and SQS queues to already exist. Verify they do:
+
+    ```bash
+    docker exec StandardNotes-LocalStack \
+      awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+    docker exec StandardNotes-LocalStack \
+      awslocal --endpoint-url=http://localhost:4566 sns list-topics
+    ```
+
+    Both must list the `*-local-queue` / `*-local-topic` entries
+    (`auth-local-queue`, `syncing-server-local-queue`,
+    `files-local-queue`, `revisions-server-local-queue`,
+    `analytics-local-queue`, `scheduler-local-queue` and the matching
+    topics). An empty `Queues: []` / `Topics: []` means the bootstrap
+    script never ran — see *Emergency bootstrap (LocalStack already
+    running, no queues)* below.
+
     > 📌 **Static IP / `br0` / macvlan / VLAN.** Docker's built-in
     > DNS (`127.0.0.11`) only resolves container names when both
     > containers share a **user-defined Docker network**. Containers
@@ -220,6 +265,47 @@ duplicates.
    the cascade as soon as a client reconnects.
 
 Full triage: [`docs/sync-loop-troubleshooting.md`](docs/sync-loop-troubleshooting.md).
+
+### Emergency bootstrap (LocalStack already running, no queues)
+
+If LocalStack is up and TCP-reachable but `sqs list-queues` /
+`sns list-topics` come back **empty**, the init script was never
+mounted (template was deployed before this fix, or the host file was
+missing on first start). LocalStack's `init/ready.d/` hook only fires
+**once**, so just restarting the container after fixing the mount is
+the long-term fix — but you can also bootstrap an already-running
+LocalStack in place, without recreating it:
+
+```bash
+# 1. Pull the script onto the Unraid host
+curl -fsSL -o /tmp/localstack_bootstrap.sh \
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh
+
+# 2. Copy it into the running LocalStack container
+docker cp /tmp/localstack_bootstrap.sh \
+  StandardNotes-LocalStack:/tmp/localstack_bootstrap.sh
+
+# 3. Run it in-place. `awslocal` is preinstalled in the LocalStack image.
+docker exec StandardNotes-LocalStack \
+  bash /tmp/localstack_bootstrap.sh
+
+# 4. Verify
+docker exec StandardNotes-LocalStack \
+  awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+docker exec StandardNotes-LocalStack \
+  awslocal --endpoint-url=http://localhost:4566 sns list-topics
+```
+
+After this, **also** persist the fix for next time:
+
+1. Place the script at the host path the LocalStack template's
+   *LocalStack Bootstrap Script* Path mapping points at — by default
+   `/mnt/user/appdata/standardnotes/localstack_bootstrap.sh` — and
+   `chmod +x` it. See
+   [Step 2 of the Quick Start](#step-2--start-localstack-required-companion)
+   for the one-liner.
+2. Restart `StandardNotesServer` so its workers reconnect against the
+   now-populated SNS / SQS.
 
 ### Hard guardrails before you migrate any real notes
 
@@ -427,9 +513,27 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-Loc
 
 ### Step 2 — Start LocalStack (required companion)
 
-In the Unraid Web UI: **Docker** → **Add Container** → in the
+**First**, drop the bootstrap script on the Unraid host. LocalStack
+starts empty and `standardnotes/server` workers expect a fixed set
+of SNS topics and SQS queues — without them, account creation hangs
+and notes can duplicate even though TCP `4566` connects fine.
+Upstream solves this by mounting a one-time init script into
+`/etc/localstack/init/ready.d/`; this repo ships the same script at
+[`scripts/localstack_bootstrap.sh`](scripts/localstack_bootstrap.sh).
+
+On the Unraid host, **before** starting the LocalStack container:
+
+```bash
+mkdir -p /mnt/user/appdata/standardnotes
+curl -fsSL -o /mnt/user/appdata/standardnotes/localstack_bootstrap.sh \
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh
+chmod +x /mnt/user/appdata/standardnotes/localstack_bootstrap.sh
+```
+
+Then, in the Unraid Web UI: **Docker** → **Add Container** → in the
 **Template** dropdown, pick **StandardNotes-LocalStack** under
-*User templates*.
+*User templates*. Leave the *LocalStack Bootstrap Script* Path
+mapping at its default — it points at the file you just placed.
 
 - **User-defined Docker network setup** (server + LocalStack on the
   same custom bridge): no further configuration needed — give the
@@ -446,7 +550,27 @@ In the Unraid Web UI: **Docker** → **Add Container** → in the
   *not* resolve container names across `br0` / macvlan — `--add-host`
   is what makes the literal name `localstack` resolve in this case.
 
-Hit **Apply**.
+Hit **Apply**. Once LocalStack reports ready, verify the bootstrap
+script created the topics and queues:
+
+```bash
+docker exec StandardNotes-LocalStack \
+  awslocal --endpoint-url=http://localhost:4566 sqs list-queues
+docker exec StandardNotes-LocalStack \
+  awslocal --endpoint-url=http://localhost:4566 sns list-topics
+```
+
+Expected: each command lists multiple `*-local-queue` /
+`*-local-topic` entries (`auth-local-queue`,
+`syncing-server-local-queue`, `files-local-queue`,
+`revisions-server-local-queue`, `analytics-local-queue`,
+`scheduler-local-queue`, plus the matching topics). An empty
+`Queues: []` / `Topics: []` means the script never ran — most often
+because the host file was missing on first start. Fix the host
+file and either recreate the container, or use the **emergency
+bootstrap** under
+[§ 0](#emergency-bootstrap-localstack-already-running-no-queues) to
+populate the running container in place.
 
 > ⚠️ **LocalStack is required for a stable full install** of the
 > official `standardnotes/server` image. The worker process resolves

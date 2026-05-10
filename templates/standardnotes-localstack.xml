@@ -49,6 +49,28 @@
       docker exec StandardNotesServer getent hosts localstack&#xD;
     Output must be non-empty before connecting any client.&#xD;
     &#xD;
+    REQUIRED INIT SCRIPT — SNS TOPICS / SQS QUEUES:&#xD;
+    LocalStack starts empty. The official standardnotes/server image&#xD;
+    expects a fixed set of SNS topics and SQS queues to exist (eg.&#xD;
+    auth-local-queue, syncing-server-local-queue, files-local-queue&#xD;
+    and friends). Upstream provides docker/localstack_bootstrap.sh&#xD;
+    which creates them; this template ships the same script at&#xD;
+    scripts/localstack_bootstrap.sh in the GitHub repo. Mount it at&#xD;
+    /etc/localstack/init/ready.d/localstack_bootstrap.sh — LocalStack&#xD;
+    runs everything under that directory automatically when it&#xD;
+    becomes ready, exactly the way upstream docker-compose does it.&#xD;
+    &#xD;
+    On the Unraid host, BEFORE first start:&#xD;
+      mkdir -p /mnt/user/appdata/standardnotes&#xD;
+      curl -fsSL -o /mnt/user/appdata/standardnotes/localstack_bootstrap.sh \&#xD;
+        https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh&#xD;
+      chmod +x /mnt/user/appdata/standardnotes/localstack_bootstrap.sh&#xD;
+    Then leave the &quot;LocalStack Bootstrap Script&quot; path mapping below&#xD;
+    pointing at that file. Without this, LocalStack is reachable on&#xD;
+    TCP 4566 but has no topics/queues — standardnotes/server workers&#xD;
+    will loop on missing-queue errors, account creation can hang, and&#xD;
+    notes can duplicate.&#xD;
+    &#xD;
     Notes:&#xD;
     • Restricted to SERVICES=sns,sqs to keep the footprint small.&#xD;
     • Port 4566 is exposed on the bridge network so the server container&#xD;
@@ -87,5 +109,11 @@
   <Config Name="Log Level (LS_LOG)" Target="LS_LOG" Default="warn" Mode=""
           Description="LocalStack log level: trace, debug, info, warn, error."
           Type="Variable" Display="advanced" Required="false" Mask="false">warn</Config>
+
+  <Config Name="LocalStack Bootstrap Script"
+          Target="/etc/localstack/init/ready.d/localstack_bootstrap.sh"
+          Default="/mnt/user/appdata/standardnotes/localstack_bootstrap.sh" Mode="ro"
+          Description="REQUIRED. Init script that creates the SNS topics and SQS queues the official standardnotes/server image expects. LocalStack auto-runs anything in /etc/localstack/init/ready.d/ once it becomes ready. Before first start: download this repo's scripts/localstack_bootstrap.sh to the host path on the right and chmod +x it: `mkdir -p /mnt/user/appdata/standardnotes &amp;&amp; curl -fsSL -o /mnt/user/appdata/standardnotes/localstack_bootstrap.sh https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/scripts/localstack_bootstrap.sh &amp;&amp; chmod +x /mnt/user/appdata/standardnotes/localstack_bootstrap.sh`. Without it, LocalStack is reachable but empty — workers loop on missing queues and notes can duplicate. Verify after start with: `docker exec StandardNotes-LocalStack awslocal --endpoint-url=http://localhost:4566 sqs list-queues` and `sns list-topics`."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/standardnotes/localstack_bootstrap.sh</Config>
 
 </Container>
