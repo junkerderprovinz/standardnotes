@@ -174,6 +174,41 @@ What it does do:
 | Reverse-proxy guidance | ✅ | ⚠️ |
 | Volumes match upstream paths 1:1 | ✅ | ⚠️ |
 
+### Scope: backend only, no paid-feature unlocks, no AiO image
+
+This template ships **only the official Standard Notes backend**
+(`standardnotes/server`) plus the optional LocalStack companion. A few
+points users frequently ask about:
+
+- **Paid Standard Notes features are not unlocked by self-hosting.**
+  Subscription-only client features (extended editors, advanced themes,
+  Files quota, Listed, etc.) are gated by Standard Notes' own licensing
+  / subscription checks, which live in the official clients and the
+  upstream server. This template **does not** patch, bypass, or
+  otherwise modify those checks — it deploys the upstream image as-is.
+  Self-hosting gives you data ownership and a free Sync server; it does
+  not turn a free account into a paid one.
+- **Web UI is intentionally a separate, optional container.** If you
+  want a browser client in addition to the desktop / mobile apps, run
+  the official [`standardnotes/web`](https://standardnotes.com/help/self-hosting/web-app)
+  image as its **own** Unraid container and point it at this server via
+  your reverse proxy. Keeping web and server separate mirrors upstream's
+  own `docker-compose.example.yml`, makes upgrades independent, and
+  avoids the maintenance burden of a custom rebuilt all-in-one image.
+  A dedicated `StandardNotes-Web` Community template is **not** shipped
+  yet — the exact env-var surface (default sync-server URL, listening
+  port) of the official image needs to be re-verified against the
+  current upstream tag before a template can be published, and a wrong
+  guess here would land users with a web client that points at the
+  public Standard Notes sync server instead of their own backend.
+- **No All-in-One (AiO) container.** An AiO image bundling server +
+  web + DB + cache is **not** planned for the first Community
+  Applications release. AiO would require a custom rebuilt image
+  (diverging from upstream tags), would re-bundle MariaDB / Redis that
+  most Unraid users already run, and would have to be re-released on
+  every upstream component bump. This wrapper deliberately stays close
+  to upstream so updates are just a tag change.
+
 ---
 
 ## 2. Architecture

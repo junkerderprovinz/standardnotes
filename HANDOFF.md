@@ -5,7 +5,72 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
-## Latest pass — generic examples, visible URL/Cookie fields, files-port relocation
+## Latest pass — wordmark-free icon, paid-features / WebUI / AiO scope note
+
+Per direct user request (in German):
+
+1. *"Als Container logo bitte Das logo ohne schrift aus dem Banner
+   verwenden ohne Schriftzug."* — use the mark from the banner, no
+   wordmark.
+2. Whether self-hosting unlocks paid Standard Notes styling / features.
+3. Whether the template should ship a Web UI bundled in, separately,
+   or as an AiO container.
+
+What changed:
+
+- **`.github/assets/icon.svg` rebuilt around the official mark only.**
+  The icon previously was a generic dark "note + lock" illustration.
+  It is now the same 188×188 brand-blue (`#1C6EE0`) mark used in
+  `.github/assets/banner.svg`, centered in a 256×256 transparent
+  square (34px padding all sides). No "Standard Notes" wordmark, no
+  Proton / powered-by markings in the visual. `aria-label="Standard
+  Notes"` is the only textual reference and is non-visible
+  accessibility metadata.
+- **Icon URLs verified, no template change needed.** Both
+  `templates/standardnotes-server.xml` and
+  `templates/standardnotes-localstack.xml` already point `<Icon>` at
+  `https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/.github/assets/icon.svg`,
+  which is the file we updated, so the new icon will be picked up
+  automatically once the repo is published.
+- **README §1 — new "Scope: backend only, no paid-feature unlocks,
+  no AiO image" subsection.** Three bullets, written in plain
+  English, that directly answer the user's three questions:
+  - Paid Standard Notes features are gated by upstream's licensing /
+    subscription checks and are **not** unlocked by self-hosting;
+    this template deploys the upstream image as-is and does not
+    patch those checks.
+  - The web UI is intentionally a *separate* optional container
+    (official `standardnotes/web`), not bundled into this template.
+    Reasoning called out: mirrors upstream's
+    `docker-compose.example.yml`, independent upgrades, no custom
+    rebuilt AiO image to maintain.
+  - No All-in-One container is planned for the first Community
+    Applications release. Justified: would require a custom rebuilt
+    image diverging from upstream tags, would re-bundle MariaDB /
+    Redis most users already run, and would need re-release on every
+    upstream component bump.
+  - A dedicated `StandardNotes-Web` Community template is **not**
+    shipped in this pass. The current upstream env-var surface
+    (default sync-server URL, listening port) of the official web
+    image needs verification against the live tag before publishing —
+    a wrong default here would silently point users at the public
+    Standard Notes sync server instead of their self-hosted backend.
+    Documented as a known gap so the next pass can verify and add
+    the template safely.
+- **Validation.**
+  - `python3 -m xml.etree.ElementTree` parses
+    `.github/assets/icon.svg`, `.github/assets/banner.svg`,
+    `templates/standardnotes-server.xml`, and
+    `templates/standardnotes-localstack.xml` cleanly.
+  - `grep -rn "[Pp]roton\|powered.?by"` against
+    `.github/assets/` returns zero hits. The banner still contains
+    its intended "Standard Notes" wordmark; the icon has only an
+    `aria-label` (non-visible).
+  - No real domains, no `bottich`, no `192.168.20.*` introduced.
+- **No push, no remote action.** Working tree only — main agent will
+  review and push.
+
+## Earlier pass — generic examples, visible URL/Cookie fields, files-port relocation
 
 Per direct user request. Scope kept small.
 
