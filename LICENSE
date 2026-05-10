@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 standardnotes-server contributors
+Copyright (c) 2026 Junker der Provinz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Notice on bundled / referenced software:
-
-This repository is a wrapper. It packages no upstream code — it only references
-Docker images and provides Unraid Community templates. The MIT license above
-applies to the wrapper repository itself (templates, README, docs, banner /
-icon artwork). The Standard Notes server image, the LocalStack image, and any
-MariaDB / Redis images you run alongside this template retain their respective
-upstream licenses (Standard Notes: AGPL-3.0; LocalStack: Apache-2.0;
-MariaDB: GPL-2.0; Redis: see upstream). When running, redistributing or
-rebuilding the resulting stack you must comply with all of those licenses,
-not only with this wrapper's MIT license.

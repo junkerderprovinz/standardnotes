@@ -5,7 +5,55 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
-## Latest pass — server/webui repo split, container rename
+## Latest pass — heading, MIT, Lint/Build CI split
+
+- **README heading** is now `Standard Notes Server for Unraid` (was
+  `Standard Notes for Unraid`). The banner image's `alt` text is updated
+  to match.
+- **LICENSE simplified to plain MIT.** Copyright holder is
+  `Junker der Provinz`. The bundled-software notice was removed from
+  the LICENSE file; the README's License section keeps a one-paragraph
+  pointer to the upstream component licenses (AGPL-3.0 / Apache-2.0 /
+  GPL-2.0) without re-licensing them.
+- **Workflows split.** `.github/workflows/validate.yml` removed and
+  replaced with two focused workflows, both stdlib-only:
+  - `lint.yml` (job name `Lint`) — placeholder guard
+    (`REPLACE_WITH_*`) and a tiny YAML sanity check on
+    `.github/workflows/*.yml` (no tabs, has `name:`, `on:`, `jobs:`).
+  - `build.yml` (job name `Build`) — verifies required repo assets
+    exist (`templates/*.xml`, `.github/assets/*.svg`, `README.md`,
+    `LICENSE`) and parses every XML/SVG with `xml.etree.ElementTree`.
+- **README badge row.** The single `validate` badge was replaced with
+  separate `lint` and `build` shields.io badges, each pointing at its
+  workflow on `main`. The MIT license badge is now a static
+  shields.io badge (was the dynamic `github/license/...` one) so it
+  works before the repo is public.
+- **License section in README** condensed to a single paragraph (MIT
+  for the wrapper, upstream licenses for the referenced images).
+
+### Validation (this pass)
+
+```
+$ python3 - <<'PY'
+import xml.etree.ElementTree as ET, glob
+for p in sorted(set(glob.glob('templates/*.xml') + glob.glob('.github/assets/*.svg'))):
+    ET.parse(p); print('ok', p)
+PY
+ok .github/assets/banner.svg
+ok .github/assets/icon.svg
+ok templates/standardnotes-localstack.xml
+ok templates/standardnotes-server.xml
+
+$ python3 -c "import yaml,glob; [yaml.safe_load(open(p)) for p in glob.glob('.github/workflows/*.yml')]"
+(no output — all workflow YAMLs parse cleanly)
+
+$ grep -rnE "REPLACE_WITH_[A-Z_]+" templates README.md docs
+(no matches)
+```
+
+---
+
+## Earlier pass — server/webui repo split, container rename
 
 The repo is being split into two siblings:
 

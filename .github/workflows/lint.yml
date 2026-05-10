@@ -1,0 +1,57 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check for leftover placeholders
+        run: |
+          if grep -rnE "REPLACE_WITH_[A-Z_]+" templates README.md docs 2>/dev/null; then
+            echo "::error::Found unreplaced REPLACE_WITH_* placeholder(s)."
+            exit 1
+          fi
+
+      - name: Lint workflow YAML files (stdlib only)
+        run: |
+          python3 - <<'PY'
+          import sys, glob, re
+
+          failed = []
+          for path in sorted(glob.glob(".github/workflows/*.yml")):
+              with open(path, encoding="utf-8") as fh:
+                  text = fh.read()
+              if "\t" in text:
+                  print(f"FAIL {path}: tab character in YAML", file=sys.stderr)
+                  failed.append(path)
+                  continue
+              if not re.search(r"^name:\s+\S+", text, re.MULTILINE):
+                  print(f"FAIL {path}: missing top-level 'name:'", file=sys.stderr)
+                  failed.append(path)
+                  continue
+              if not re.search(r"^on:\s*$", text, re.MULTILINE) and not re.search(r"^on:\s+\S+", text, re.MULTILINE):
+                  print(f"FAIL {path}: missing 'on:' trigger", file=sys.stderr)
+                  failed.append(path)
+                  continue
+              if not re.search(r"^jobs:\s*$", text, re.MULTILINE):
+                  print(f"FAIL {path}: missing 'jobs:' section", file=sys.stderr)
+                  failed.append(path)
+                  continue
+              print(f"ok   {path}")
+
+          if failed:
+              sys.exit(f"{len(failed)} workflow file(s) failed lint")
+          PY

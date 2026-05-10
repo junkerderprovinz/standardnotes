@@ -1,7 +1,7 @@
-<h1 align="center">Standard Notes for Unraid</h1>
+<h1 align="center">Standard Notes Server for Unraid</h1>
 
 <a href="https://standardnotes.com">
-  <img src=".github/assets/banner.svg" alt="Standard Notes for Unraid" width="100%">
+  <img src=".github/assets/banner.svg" alt="Standard Notes Server for Unraid" width="100%">
 </a>
 
 <p align="center">
@@ -10,8 +10,9 @@
   <a href="https://hub.docker.com/r/standardnotes/server"><img src="https://img.shields.io/badge/Docker-standardnotes%2Fserver-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker image"></a>
   <a href="#5-database--cache"><img src="https://img.shields.io/badge/Database-MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white" alt="MariaDB"></a>
   <a href="#5-database--cache"><img src="https://img.shields.io/badge/Cache-Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis"></a>
-  <a href="https://github.com/junkerderprovinz/standardnotes-server/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/junkerderprovinz/standardnotes-server/validate.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=validate" alt="Validate"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/junkerderprovinz/standardnotes-server?style=for-the-badge&color=yellow" alt="License: MIT"></a>
+  <a href="https://github.com/junkerderprovinz/standardnotes-server/actions/workflows/lint.yml"><img src="https://img.shields.io/github/actions/workflow/status/junkerderprovinz/standardnotes-server/lint.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=lint" alt="Lint"></a>
+  <a href="https://github.com/junkerderprovinz/standardnotes-server/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/junkerderprovinz/standardnotes-server/build.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=build" alt="Build"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License: MIT"></a>
 </p>
 
 <p align="center">
@@ -686,16 +687,14 @@ Pull requests welcome. Issues:
 > Sobald ein Unraid-Forum-Thread existiert, sollte der `<Support>`-Link
 > dort hin zeigen (oder zusätzlich), siehe `docs/PUBLISHING.md`.
 
-**Licensing — dual:**
+**License:** [MIT](LICENSE).
 
-- This **wrapper repository** (Unraid templates, README, banner / icon
-  artwork, example env file) is licensed under the [MIT License](LICENSE).
-- **Standard Notes itself** and the bundled `standardnotes/server` Docker
-  image, the LocalStack image, and any downstream MariaDB / Redis images
-  retain their upstream licenses (mostly AGPL-3.0 for Standard Notes, and
-  the respective licenses for everything else). When you run, redistribute
-  or rebuild the resulting stack, you must comply with **all** of those
-  licenses, not only with this wrapper's MIT license.
+This wrapper repository (Unraid templates, README, banner / icon artwork,
+example env file) is MIT-licensed. The upstream `standardnotes/server`,
+LocalStack, MariaDB and Redis images retain their own upstream licenses
+(Standard Notes: AGPL-3.0; LocalStack: Apache-2.0; MariaDB: GPL-2.0;
+Redis: see upstream) — comply with those when running or redistributing
+the resulting stack.
 
 ```bash
 # Validate locally

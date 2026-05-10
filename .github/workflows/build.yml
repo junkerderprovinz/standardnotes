@@ -1,4 +1,4 @@
-name: validate
+name: Build
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  xml-svg-wellformed:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +17,23 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+
+      - name: Verify required repo assets exist
+        run: |
+          set -e
+          for f in \
+            templates/standardnotes-server.xml \
+            templates/standardnotes-localstack.xml \
+            .github/assets/banner.svg \
+            .github/assets/icon.svg \
+            README.md \
+            LICENSE; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required file: $f"
+              exit 1
+            fi
+            echo "ok   $f"
+          done
 
       - name: Validate XML and SVG well-formedness (stdlib only)
         run: |
@@ -44,10 +61,3 @@ jobs:
           if failed:
               sys.exit(f"{len(failed)} file(s) failed to parse")
           PY
-
-      - name: Check for leftover placeholders
-        run: |
-          if grep -rnE "REPLACE_WITH_[A-Z_]+" templates README.md docs 2>/dev/null; then
-            echo "::error::Found unreplaced REPLACE_WITH_* placeholder(s)."
-            exit 1
-          fi

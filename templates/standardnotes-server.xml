@@ -165,7 +165,7 @@
        ======================================================== -->
   <Config Name="Public Files Server URL"
           Target="PUBLIC_FILES_SERVER_URL" Default="" Mode=""
-          Description="Optional. Public HTTPS URL of the files server (attachments). Example: https://files.standardnotes.mydomain.tld. Set ONLY if you reverse-proxy the files server on its own subdomain (see Files Server Port below). Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
+          Description="Optional. Public HTTPS URL of the files server (attachments). Example: https://files.standardnotesserver.mydomain.tld. Set ONLY if you reverse-proxy the files server on its own subdomain (see Files Server Port below). Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
           Type="Variable" Display="always" Required="false" Mask="false"/>
 
   <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
