@@ -741,6 +741,19 @@ contains placeholders only; `templates/*.xml` mark all secret fields
    (`Squidly271/AppFeed`) — full procedure in `docs/PUBLISHING.md`
    § 4.
 
+## Latest pass — shared banner & icon across server/webui
+
+`.github/assets/banner.svg` and `.github/assets/icon.svg` are now byte-
+identical across the `standardnotes-server` and `standardnotes-webui`
+repos. The banner is the clean Standard Notes lockup (white background,
+official mark + "Standard Notes" wordmark, no taglines, no Proton or
+powered-by text). The icon is the bare Standard Notes mark on a 256×256
+canvas, suitable as the Docker/Unraid container icon. Each template's
+`<Icon>` element still points at its own repo's raw URL
+(`standardnotes-server` or `standardnotes-webui`) but they reference the
+same relative asset path `.github/assets/icon.svg`, so future asset
+changes only need to be replicated across both repos.
+
 ## Not done (out of scope per instructions)
 
 - No `git remote add` / `git push`.
