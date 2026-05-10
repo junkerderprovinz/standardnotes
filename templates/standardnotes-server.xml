@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>StandardNotes</Name>
+  <Name>StandardNotesServer</Name>
   <Repository>standardnotes/server:latest</Repository>
   <Registry>https://hub.docker.com/r/standardnotes/server</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/junkerderprovinz/standardnotes/issues</Support>
+  <Support>https://github.com/junkerderprovinz/standardnotes-server/issues</Support>
   <Project>https://standardnotes.com</Project>
   <Overview>
     Standard Notes – self-hosted backend for Unraid (community template).&#xD;
@@ -43,9 +43,13 @@
     • UNOFFICIAL community template. Standard Notes does not provide&#xD;
       support for self-hosted setups beyond the official Docker docs at&#xD;
       https://standardnotes.com/help/self-hosting/docker.&#xD;
-    • The web client (standardnotes/web) is optional and is NOT part of&#xD;
-      this template. Most users connect with the official desktop / mobile&#xD;
-      apps and just point them at https://your-domain/ via reverse proxy.&#xD;
+    • The web client (standardnotes/web) is shipped as a SEPARATE&#xD;
+      Unraid template in the companion repo&#xD;
+      https://github.com/junkerderprovinz/standardnotes-webui — its&#xD;
+      container is named "StandardNotes". Most users connect with the&#xD;
+      official desktop / mobile apps and just point them at&#xD;
+      https://your-domain/ via reverse proxy; the web container is&#xD;
+      optional.&#xD;
     • Always expose Standard Notes via HTTPS (NPM, SWAG, Traefik, Caddy).&#xD;
       Do not publish port 3000 to the public internet directly.&#xD;
     &#xD;
@@ -64,8 +68,8 @@
   </Overview>
   <Category>Productivity: Cloud: Security:</Category>
   <WebUI>http://[IP]:[PORT:3000]/healthcheck</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-server.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/.github/assets/icon.svg</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-server.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/.github/assets/icon.svg</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
@@ -165,7 +169,7 @@
           Type="Variable" Display="always" Required="false" Mask="false"/>
 
   <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
-          Description="Host port for the files server (container 3104). To enable attachments, create a SECOND reverse-proxy host: e.g. in Nginx Proxy Manager add a Proxy Host with Domain Names = files.standardnotes.mydomain.tld, Scheme = http, Forward Hostname/IP = this StandardNotes container's IP, Forward Port = 3125, Websockets ON, then on the SSL tab request a Let's Encrypt cert and enable Force SSL + HTTP/2. Then set Public Files Server URL above to https://files.standardnotes.mydomain.tld. Keep host port 3125 unless you also change the proxy host's Forward Port."
+          Description="Host port for the files server (container 3104). To enable attachments, create a SECOND reverse-proxy host: e.g. in Nginx Proxy Manager add a Proxy Host with Domain Names = files.standardnotes.mydomain.tld, Scheme = http, Forward Hostname/IP = this StandardNotesServer container's IP, Forward Port = 3125, Websockets ON, then on the SSL tab request a Let's Encrypt cert and enable Force SSL + HTTP/2. Then set Public Files Server URL above to https://files.standardnotes.mydomain.tld. Keep host port 3125 unless you also change the proxy host's Forward Port."
           Type="Port" Display="always" Required="true" Mask="false">3125</Config>
 
   <Config Name="Cookie Domain"

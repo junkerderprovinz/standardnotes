@@ -7,7 +7,7 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/junkerderprovinz/standardnotes/issues</Support>
+  <Support>https://github.com/junkerderprovinz/standardnotes-server/issues</Support>
   <Project>https://github.com/localstack/localstack</Project>
   <Overview>
     LocalStack companion container for the Standard Notes self-hosted&#xD;
@@ -28,8 +28,8 @@
   </Overview>
   <Category>Productivity: Cloud:</Category>
   <WebUI/>
-  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-localstack.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/.github/assets/icon.svg</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-localstack.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/.github/assets/icon.svg</Icon>
   <ExtraParams>--restart=unless-stopped --hostname=localstack</ExtraParams>
   <PostArgs/>
   <CPUset/>

@@ -10,8 +10,8 @@
   <a href="https://hub.docker.com/r/standardnotes/server"><img src="https://img.shields.io/badge/Docker-standardnotes%2Fserver-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker image"></a>
   <a href="#5-database--cache"><img src="https://img.shields.io/badge/Database-MariaDB-003545?style=for-the-badge&logo=mariadb&logoColor=white" alt="MariaDB"></a>
   <a href="#5-database--cache"><img src="https://img.shields.io/badge/Cache-Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis"></a>
-  <a href="https://github.com/junkerderprovinz/standardnotes/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/junkerderprovinz/standardnotes/validate.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=validate" alt="Validate"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/junkerderprovinz/standardnotes?style=for-the-badge&color=yellow" alt="License: MIT"></a>
+  <a href="https://github.com/junkerderprovinz/standardnotes-server/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/junkerderprovinz/standardnotes-server/validate.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=validate" alt="Validate"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/junkerderprovinz/standardnotes-server?style=for-the-badge&color=yellow" alt="License: MIT"></a>
 </p>
 
 <p align="center">
@@ -148,14 +148,20 @@ What it deliberately does **not** do:
   reuse the one you already run for Nextcloud, Vaultwarden, Photoprism,
   whatever. One DB engine for all your apps.
 - **No bundled Redis.** Same logic. Reuse your existing Redis container.
-- **No web client.** Standard Notes recommends the official desktop / mobile
-  apps; the optional [`standardnotes/web`](https://standardnotes.com/help/self-hosting/web-app)
-  image can be installed separately if you want it.
+- **No bundled web client.** Standard Notes recommends the official
+  desktop / mobile apps. If you want a browser client too, the
+  optional [`standardnotes/web`](https://standardnotes.com/help/self-hosting/web-app)
+  image is shipped as a **separate** Unraid template in the companion
+  repo
+  [`junkerderprovinz/standardnotes-webui`](https://github.com/junkerderprovinz/standardnotes-webui)
+  (container name `StandardNotes`). Install it on its own and point it
+  at this server via your reverse proxy.
 
 What it does do:
 
-- **One Unraid template per concern** — `StandardNotes` and
-  (optionally) `StandardNotes-LocalStack`.
+- **One Unraid template per concern** — `StandardNotesServer` and
+  (optionally) `StandardNotes-LocalStack`. The browser client lives in
+  the companion repo as its own `StandardNotes` template.
 - **Sane defaults** taken from the upstream
   [`.env.sample`](https://github.com/standardnotes/server/blob/main/.env.sample).
 - **Every secret marked `Mask="true"`** in the template, so the Unraid UI
@@ -192,15 +198,13 @@ points users frequently ask about:
   want a browser client in addition to the desktop / mobile apps, run
   the official [`standardnotes/web`](https://standardnotes.com/help/self-hosting/web-app)
   image as its **own** Unraid container and point it at this server via
-  your reverse proxy. Keeping web and server separate mirrors upstream's
-  own `docker-compose.example.yml`, makes upgrades independent, and
-  avoids the maintenance burden of a custom rebuilt all-in-one image.
-  A dedicated `StandardNotes-Web` Community template is **not** shipped
-  yet — the exact env-var surface (default sync-server URL, listening
-  port) of the official image needs to be re-verified against the
-  current upstream tag before a template can be published, and a wrong
-  guess here would land users with a web client that points at the
-  public Standard Notes sync server instead of their own backend.
+  your reverse proxy. The companion template
+  [`junkerderprovinz/standardnotes-webui`](https://github.com/junkerderprovinz/standardnotes-webui)
+  ships exactly that — container name `StandardNotes`, default host
+  port `3001` to avoid the backend's `:3000`. Keeping web and server
+  separate mirrors upstream's own `docker-compose.example.yml`, makes
+  upgrades independent, and avoids the maintenance burden of a custom
+  rebuilt all-in-one image.
 - **No All-in-One (AiO) container.** An AiO image bundling server +
   web + DB + cache is **not** planned for the first Community
   Applications release. AiO would require a custom rebuilt image
@@ -217,7 +221,7 @@ points users frequently ask about:
 ┌──────────────────────────── Unraid Host ────────────────────────────┐
 │                                                                     │
 │   Reverse Proxy                                                     │
-│   (SWAG / NPM / Traefik)  ──HTTPS──►  StandardNotes                 │
+│   (SWAG / NPM / Traefik)  ──HTTPS──►  StandardNotesServer           │
 │                                       (standardnotes/server)        │
 │                                       :3000  API gateway            │
 │                                       :3104  files server           │
@@ -266,10 +270,10 @@ console / SSH:
 mkdir -p /boot/config/plugins/dockerMan/templates-user
 
 curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-Server.xml \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-server.xml
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-server.xml
 
 curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-LocalStack.xml \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-localstack.xml
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-localstack.xml
 ```
 
 > 📌 The Unraid templates-user destination is
@@ -285,7 +289,7 @@ In the Unraid Web UI: **Docker** → **Add Container** → in the
 
 ### Step 3 — Start the Standard Notes server
 
-**Docker** → **Add Container** → pick **StandardNotes** under
+**Docker** → **Add Container** → pick **StandardNotesServer** under
 *User templates*. Fill in:
 
 - **DB Host / Port / Username / Password / Name** → values of your MariaDB
@@ -479,7 +483,7 @@ In the NPM UI, **Hosts → Proxy Hosts → Add Proxy Host**:
 
 - **Domain Names:** `standardnotes.mydomain.tld`
 - **Scheme:** `http`
-- **Forward Hostname / IP:** `192.168.x.x` *(StandardNotes container IP)*
+- **Forward Hostname / IP:** `192.168.x.x` *(StandardNotesServer container IP)*
 - **Forward Port:** `3000`
 - **Block Common Exploits:** on
 - **Websockets Support:** on
@@ -514,7 +518,7 @@ shape. Two options:
 2. **Two NPM proxy hosts / two subdomains (recommended for full
    attachment support).** Add a second NPM proxy host, e.g.
    `files.standardnotes.mydomain.tld` → `192.168.x.x:3125` (the
-   StandardNotes container IP), with its own Let's Encrypt
+   StandardNotesServer container IP), with its own Let's Encrypt
    certificate and **Force SSL** on. Then set
    **Public Files Server URL** = `https://files.standardnotes.mydomain.tld`
    in the template.
@@ -583,7 +587,7 @@ folder, start the container.
 
 ```bash
 docker pull standardnotes/server:latest
-docker stop StandardNotes && docker rm StandardNotes
+docker stop StandardNotesServer && docker rm StandardNotesServer
 # re-create with the same template / docker run args
 ```
 
@@ -649,7 +653,7 @@ start — watch the log for errors.
   or `duplicate_of` cascades.
 - Verify `REDIS_HOST` / `REDIS_PORT` point at the right **IP** and
   that the Redis container is actually reachable from the
-  StandardNotes container (`nc -zv <ip> 6379`).
+  StandardNotesServer container (`nc -zv <ip> 6379`).
 - Verify `COOKIE_DOMAIN` matches your public sync host and that the
   reverse proxy serves the API over **HTTPS**.
 - Roll back to a known-good `standardnotes/server` tag if you recently
@@ -673,7 +677,7 @@ start — watch the log for errors.
 ## 12. Contributing / License
 
 Pull requests welcome. Issues:
-<https://github.com/junkerderprovinz/standardnotes/issues>.
+<https://github.com/junkerderprovinz/standardnotes-server/issues>.
 
 > **Support link note / Hinweis zum Support-Link:** The `<Support>` tag in
 > both Unraid templates currently points at the GitHub Issues tracker.

@@ -11,7 +11,7 @@ order, German/English friendly.
 Prerequisites before anything else can happen:
 
 - Repository is **public** on GitHub at
-  `https://github.com/junkerderprovinz/standardnotes`.
+  `https://github.com/junkerderprovinz/standardnotes-server`.
 - `main` branch builds cleanly — no uncommitted placeholder strings
   (`REPLACE_WITH_*`) anywhere in `templates/`, `README.md`, or `docs/`.
 - The `validate` GitHub Actions workflow (`.github/workflows/validate.yml`)
@@ -22,7 +22,7 @@ Prerequisites before anything else can happen:
 Quick check from a clean clone:
 
 ```bash
-git clone https://github.com/junkerderprovinz/standardnotes.git
+git clone https://github.com/junkerderprovinz/standardnotes-server.git
 cd standardnotes
 grep -rn "REPLACE_WITH_" .   # must return nothing
 python3 -c "import xml.etree.ElementTree as ET; \
@@ -41,10 +41,10 @@ run on the Unraid console are:
 mkdir -p /boot/config/plugins/dockerMan/templates-user
 
 curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-Server.xml \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-server.xml
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-server.xml
 
 curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-LocalStack.xml \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-localstack.xml
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-localstack.xml
 ```
 
 Unraid's **Docker → Add Container → Template → User templates**
@@ -60,9 +60,9 @@ Both XML templates reference raw GitHub URLs for `<TemplateURL>` and
 
 ```bash
 for url in \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-server.xml \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-localstack.xml \
-  https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/.github/assets/icon.svg
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-server.xml \
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-localstack.xml \
+  https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/.github/assets/icon.svg
 do
   echo "$url"
   curl -fsI "$url" | head -n 1

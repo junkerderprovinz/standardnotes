@@ -1,11 +1,107 @@
-# HANDOFF — standardnotes (Unraid templates)
+# HANDOFF — standardnotes-server (Unraid templates)
 
 Local working directory. **Publishing remains paused** — nothing has
 been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
-## Latest pass — wordmark-free icon, paid-features / WebUI / AiO scope note
+## Latest pass — server/webui repo split, container rename
+
+The repo is being split into two siblings:
+
+- **`junkerderprovinz/standardnotes-server`** — this directory.
+  Holds the backend template (`standardnotes/server` image,
+  `StandardNotes-LocalStack` companion). Container name in the
+  template is now **`StandardNotesServer`** (was `StandardNotes`)
+  so the name is unambiguous against the WebUI container.
+- **`junkerderprovinz/standardnotes-webui`** — new sibling repo
+  with its own working directory at
+  `/home/user/workspace/standardnotes-webui/`. Ships the official
+  `standardnotes/web` browser client as an Unraid template,
+  container name **`StandardNotes`** (the user-facing brand
+  name now belongs to the web container).
+
+What changed in this directory:
+
+- **Repo URL switch.** Every `<TemplateURL>`, `<Icon>`, `<Support>`,
+  badge URL, install command, and PUBLISHING.md raw-URL example moved
+  from `junkerderprovinz/standardnotes` to
+  `junkerderprovinz/standardnotes-server`. Raw URLs now resolve under
+  `https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/...`.
+  XML template *filenames* are unchanged (`standardnotes-server.xml`,
+  `standardnotes-localstack.xml`).
+- **Container rename: `StandardNotes` → `StandardNotesServer`.**
+  Updated in `templates/standardnotes-server.xml` (`<Name>`),
+  README §10 update commands (`docker stop StandardNotesServer && docker
+  rm StandardNotesServer`), README §2 architecture diagram, README §8
+  NPM forward-host wording, README §11 `nc -zv` snippet, and
+  `docs/sync-loop-troubleshooting.md` `docker exec`/`docker logs`
+  examples. The `Target=` env-var keys are unchanged so the running
+  container env is identical.
+- **WebUI cross-references.** README §1 "What is this?" and §1 "Scope"
+  bullets now point users at the companion repo
+  `junkerderprovinz/standardnotes-webui` (container `StandardNotes`,
+  default host port `3001` to avoid the backend's `:3000`). The server
+  XML `<Overview>` notes the same — that the web template is in the
+  separate companion repo and uses container name `StandardNotes`.
+- **LICENSE credit** updated from
+  `standardnotes-unraid contributors` →
+  `standardnotes-server contributors` to match the new repo name.
+- **All previous decisions kept.** MariaDB-only wording, IP-based DB /
+  Redis hosts (`192.168.x.x`), no Redis password, secrets masked,
+  `COOKIE_DOMAIN` and `PUBLIC_FILES_SERVER_URL` visible, files-server
+  port placement under Public Files Server URL, `<Support>` pointing
+  at GitHub Issues until a forum thread exists.
+
+### Files changed in this pass
+
+```
+standardnotes-unraid/   (working dir; published as standardnotes-server)
+├── README.md                              # repo URLs, container
+│                                          # rename, WebUI pointer
+├── HANDOFF.md                             # this update
+├── LICENSE                                # credit line rename
+├── docs/
+│   ├── PUBLISHING.md                      # repo URLs
+│   └── sync-loop-troubleshooting.md       # container name in
+│                                          # docker exec / logs
+└── templates/
+    ├── standardnotes-server.xml           # <Name>StandardNotesServer</Name>,
+    │                                      # repo URLs, WebUI mention,
+    │                                      # files-port description IP
+    │                                      # wording
+    └── standardnotes-localstack.xml       # repo URLs
+```
+
+### Validation (this pass)
+
+```
+$ python3 -c "import xml.etree.ElementTree as ET; \
+    [print('ok', f) or ET.parse(f) for f in [ \
+      'templates/standardnotes-server.xml', \
+      'templates/standardnotes-localstack.xml', \
+      '.github/assets/banner.svg', \
+      '.github/assets/icon.svg']]"
+ok templates/standardnotes-server.xml
+ok templates/standardnotes-localstack.xml
+ok .github/assets/banner.svg
+ok .github/assets/icon.svg
+
+$ grep -rnE "junkerderprovinz/standardnotes($|[^-])" \
+    README.md templates/ docs/PUBLISHING.md \
+    docs/configuration.md docs/sync-loop-troubleshooting.md \
+    examples/ .github/workflows/
+(no matches — all user-facing URLs now carry the -server suffix.
+ HANDOFF.md retains historical references for context.)
+
+$ grep -rnE "<Name>StandardNotes</Name>" templates/
+(no matches — server container is now StandardNotesServer; the
+ plain "StandardNotes" name belongs to the WebUI repo.)
+```
+
+---
+
+## Earlier pass — wordmark-free icon, paid-features / WebUI / AiO scope note
 
 Per direct user request (in German):
 

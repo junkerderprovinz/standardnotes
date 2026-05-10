@@ -9,7 +9,7 @@ This document is the long-form companion to
 Read that section first.
 
 > ⚠️ If duplication is **happening right now**: stop every connected
-> client, stop the `StandardNotes` container, and **do not keep
+> client, stop the `StandardNotesServer` container, and **do not keep
 > editing notes**. Every additional edit can fan out further. Diagnose
 > first, then resume.
 
@@ -62,11 +62,11 @@ inconsistent — a known precursor to duplicate cascades.
       on container restart.
 - [ ] `REDIS_PORT=6379` (or whatever your Redis container actually
       listens on).
-- [ ] The StandardNotes container can reach the Redis IP/port. From
-      the StandardNotes container's shell:
+- [ ] The StandardNotesServer container can reach the Redis IP/port.
+      From the StandardNotesServer container's shell:
 
     ```bash
-    docker exec -it StandardNotes sh
+    docker exec -it StandardNotesServer sh
     # inside the container (replace with your Redis IP):
     nc -zv 192.168.x.x 6379    # should print "open"
     # or, if nc is unavailable:
@@ -164,7 +164,7 @@ When something is wrong, these are the strings that matter. Tail the
 container log:
 
 ```bash
-docker logs -f StandardNotes
+docker logs -f StandardNotesServer
 ```
 
 …and watch for any of the following:
