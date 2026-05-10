@@ -13,6 +13,47 @@ Read that section first.
 > editing notes**. Every additional edit can fan out further. Diagnose
 > first, then resume.
 
+## Emergency checklist (duplicate-loop happening NOW)
+
+Run these in order. Do **not** keep editing notes between steps.
+
+1. **Stop every connected client immediately.** Sign out of web UI,
+   desktop, and mobile (don't just close — sign out, so background sync
+   stops). Disconnect any browser tab still open against the sync
+   server.
+2. **Stop the `StandardNotesServer` container.** Unraid → Docker →
+   Stop. Leave MariaDB and Redis running so you can inspect state.
+3. **Do NOT reconnect any existing client.** Especially not your
+   long-history account. Each new edit can fan more duplicates out.
+4. **Check Redis connectivity and logs.** From inside the
+   `StandardNotesServer` container shell (or from the Unraid host):
+   - `nc -zv <redis-ip> 6379` should print `open`.
+   - `docker logs StandardNotesServer | grep -E "ECONNREFUSED|redis"`.
+   - If Redis is down or wrong host/port, the server cannot
+     deduplicate sync state — fix this first.
+5. **Check `COOKIE_DOMAIN` is a BARE DOMAIN, and the Custom Sync
+   Server URL in the client is a FULL HTTPS URL.** These two values
+   are NOT the same shape:
+   - `COOKIE_DOMAIN` = `standardnotesserver.mydomain.tld` ✅ (no
+     protocol, no slash)
+   - Wrong: `COOKIE_DOMAIN=https://standardnotesserver.mydomain.tld` ❌
+     (this is a URL — the server emits cookies for the literal string
+     `https://...` and no browser will accept them)
+   - Custom Sync Server (in client) = `https://standardnotesserver.mydomain.tld` ✅
+     (full HTTPS URL, with scheme)
+6. **If the test/throwaway account has duplicated:** delete the test
+   account, or drop and recreate the database before continuing — do
+   not bring the server back up against a corrupted account, or the
+   first reconnecting client will reproduce the cascade. Recipe:
+   - `mysqldump` → snapshot first (see § 7 below).
+   - Drop & recreate `standard_notes_db`, or sign in via the official
+     client and delete the corrupted account.
+   - Recreate the test account fresh and re-run § 1 *Test plan*.
+
+After the emergency stop, work through the rest of this document
+(§§ 2–6) to identify the root cause before bringing the server back
+up.
+
 ---
 
 ## 0. Reference incidents (read once)
@@ -111,8 +152,19 @@ class of bug ([forum #3635](https://github.com/standardnotes/forum/issues/3635))
       addition, `Secure` cookies are dropped over HTTP outside
       `localhost`, which produces the
       `No cookies provided for cookie-based session token` symptom.
-- [ ] `COOKIE_DOMAIN` is set in the Unraid template and matches the
-      **public** sync host. Examples:
+- [ ] `COOKIE_DOMAIN` is a **bare domain** — no protocol, no
+      `https://`, no trailing slash, no path. The Custom Sync Server
+      URL entered in the client / web app is a **separate** value and
+      *is* a full HTTPS URL. Get this distinction wrong and every
+      session breaks:
+
+    | Setting | Value type | Includes `https://`? | Correct example | Wrong example |
+    |---|---|---|---|---|
+    | `COOKIE_DOMAIN` (env / template) | Bare domain | **No** | `standardnotesserver.mydomain.tld` | `https://standardnotesserver.mydomain.tld` ❌ |
+    | `PUBLIC_FILES_SERVER_URL` (env / template) | Full HTTPS URL | **Yes** | `https://files.standardnotesserver.mydomain.tld` | `files.standardnotesserver.mydomain.tld` ❌ |
+    | Custom Sync Server (client / web app UI) | Full HTTPS URL | **Yes** | `https://standardnotesserver.mydomain.tld` | `standardnotesserver.mydomain.tld` ❌ |
+
+    Public sync URL → `COOKIE_DOMAIN` mapping:
 
     | Public sync URL | `COOKIE_DOMAIN` |
     |---|---|
@@ -129,6 +181,15 @@ class of bug ([forum #3635](https://github.com/standardnotes/forum/issues/3635))
       `No cookies provided for cookie-based session token` and the
       client retries `/v1/items` repeatedly (often visible as
       `Syncing: 0/1` in the client status bar).
+- [ ] **Files server port — forward to host port `3125`, not
+      `3104`.** The internal upstream files service listens on
+      `3104` *inside* the container; the published host port is
+      `3125` (per upstream `docker-compose.example.yml`,
+      `3125:3104`). The Unraid template's *Files Server Port* field
+      uses `Target=3104` (container) with `Default=3125` (host). In
+      Nginx Proxy Manager / SWAG / Traefik, the *Forward Port* for
+      the `files.…` subdomain must be `3125`. Forwarding to `3104`
+      will fail (port not exposed on the host).
 
 ---
 

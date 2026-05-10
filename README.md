@@ -93,6 +93,51 @@ every additional client write makes the situation worse.
   `standardnotes/server` — but the same class of mismatch can still
   happen if you pin to a broken `latest`.
 
+### `https://` — where it belongs and where it does NOT
+
+A misplaced `https://` in `COOKIE_DOMAIN` is one of the most common
+self-host pitfalls and has been observed to cause the duplicate-loop
+class of bug. Use this matrix:
+
+| Field | Value type | Includes `https://`? | Example |
+|---|---|---|---|
+| `COOKIE_DOMAIN` (env / template) | **Bare domain only** | ❌ **No** | `standardnotesserver.mydomain.tld` |
+| `PUBLIC_FILES_SERVER_URL` (env / template) | **Full HTTPS URL** | ✅ **Yes** | `https://files.standardnotesserver.mydomain.tld` |
+| Custom Sync Server (in client / web app) | **Full HTTPS URL** | ✅ **Yes** | `https://standardnotesserver.mydomain.tld` |
+
+If you accidentally set `COOKIE_DOMAIN=https://standardnotesserver.mydomain.tld`,
+the server emits cookies for the literal string `https://...` which no
+browser will accept — sessions silently break, the client retries
+`/v1/items`, and conflict-resolution on the client can cascade into
+duplicates.
+
+### Emergency checklist — duplicates happening RIGHT NOW
+
+> Stop first. Diagnose second. Edit nothing.
+
+1. **Stop every connected client immediately.** Sign out (don't just
+   close) on web UI, desktop, mobile. Background sync keeps fanning the
+   loop out otherwise.
+2. **Stop the StandardNotesServer container.** Unraid → Docker → stop.
+   Leave MariaDB and Redis running so you can inspect state.
+3. **Do NOT reconnect any existing client.** Especially not your
+   long-history account. Each new edit during a loop can spawn more
+   duplicates.
+4. **Check Redis.** From inside the container shell:
+   `nc -zv <redis-ip> 6379`. Tail the server log for `ECONNREFUSED`
+   against your Redis host.
+5. **Check `COOKIE_DOMAIN`.** Verify it is a **bare domain** —
+   `standardnotesserver.mydomain.tld`, not `https://...`, not a URL,
+   no trailing slash. Verify the Custom Sync Server URL in the client
+   is the **full HTTPS URL** `https://standardnotesserver.mydomain.tld`.
+6. **If the test/throwaway account is the one that duplicated:**
+   delete it (or drop and recreate the database / wipe the test
+   account) before bringing the server back up. Carrying a
+   already-corrupted account into a "fixed" deployment will reproduce
+   the cascade as soon as a client reconnects.
+
+Full triage: [`docs/sync-loop-troubleshooting.md`](docs/sync-loop-troubleshooting.md).
+
 ### Hard guardrails before you migrate any real notes
 
 1. **Test with a fresh, throwaway account first.** Do **not** point
@@ -320,8 +365,9 @@ password into a public template).
 | Database Driver (`DB_TYPE`) | `mysql` *(internal driver value required for MariaDB — see § 6)* |
 | Redis Host | `192.168.x.x` |
 | Redis Port | `6379` |
-| Cookie Domain | `standardnotesserver.mydomain.tld` |
-| Public Files Server URL | *(optional)* `https://files.standardnotesserver.mydomain.tld` — leave empty to skip attachments — see [§ 8](#8-reverse-proxy) |
+| Cookie Domain (`COOKIE_DOMAIN`) | `standardnotesserver.mydomain.tld` *(bare domain — no `https://`)* |
+| Public Files Server URL (`PUBLIC_FILES_SERVER_URL`) | *(optional)* `https://files.standardnotesserver.mydomain.tld` *(full HTTPS URL — includes `https://`)* — leave empty to skip attachments — see [§ 8](#8-reverse-proxy) |
+| Custom Sync Server *(entered in the client / web app)* | `https://standardnotesserver.mydomain.tld` *(full HTTPS URL)* |
 
 > 💡 This template asks for **IP addresses** for the MariaDB and Redis
 > hosts. IPs are unambiguous across Unraid's bridge / `br0` / VLAN
@@ -428,16 +474,21 @@ Set the Redis Host field to the **IP address** of your Redis container
 | `AUTH_JWT_SECRET` | *(required)* | 32-byte hex — see [§ 4](#4-generating-secrets) |
 | `AUTH_SERVER_ENCRYPTION_SERVER_KEY` | *(required)* | 32-byte hex — see [§ 4](#4-generating-secrets) |
 | `VALET_TOKEN_SECRET` | *(required)* | 32-byte hex — see [§ 4](#4-generating-secrets) |
-| `PUBLIC_FILES_SERVER_URL` | *(empty)* | Public HTTPS URL of the files server, if reverse-proxied separately |
-| `COOKIE_DOMAIN` | *(empty)* | Public sync domain, e.g. `standardnotesserver.mydomain.tld`. Clients enter `https://standardnotesserver.mydomain.tld` as the Custom Sync Server — no extra "container domain" env var is needed for this template. Strongly recommended behind a reverse proxy; HTTPS is required for `Secure` cookies outside `localhost`. Wrong value → `No cookies provided for cookie-based session token` and possible sync loop. See [§ 0](#0-sync-loop--duplicate-notes-guardrails). |
+| `PUBLIC_FILES_SERVER_URL` | *(empty)* | **Full HTTPS URL** of the files server (includes `https://`), e.g. `https://files.standardnotesserver.mydomain.tld`. Set only when you reverse-proxy the files server on its own subdomain. |
+| `COOKIE_DOMAIN` | *(empty)* | **Bare domain only — no protocol, no `https://`, no path.** Example: `standardnotesserver.mydomain.tld` ✅. Wrong: `https://standardnotesserver.mydomain.tld` ❌ (that's a URL — it breaks session cookies). The Custom Sync Server URL entered in clients is a separate value and *is* a full HTTPS URL: `https://standardnotesserver.mydomain.tld`. HTTPS is required for `Secure` cookies outside `localhost`. Wrong value → `No cookies provided for cookie-based session token` and a possible sync loop. See [§ 0](#0-sync-loop--duplicate-notes-guardrails). |
 | `STANDARDNOTES_IMAGE_TAG` | `latest` | Repository tag used by the Unraid template. Default `standardnotes/server:latest`. Pin a known-good tag if `latest` introduces session/sync regressions — change with care, see [`docs/sync-loop-troubleshooting.md`](docs/sync-loop-troubleshooting.md). |
 
 ### Ports & Volumes
 
-| Port | Purpose |  | Volume | Purpose |
-|---|---|---|---|---|
-| `3000` | API gateway (HTTP, behind reverse proxy) |  | `/var/lib/server/logs` | Server logs |
-| `3125 → 3104` | Files server |  | `/opt/server/packages/files/dist/uploads` | Encrypted file uploads |
+| Host Port | Container Port | Purpose |
+|---|---|---|
+| `3000` | `3000` | API gateway (HTTP, behind reverse proxy) |
+| `3125` | `3104` | Files server. **Forward your reverse proxy to host port `3125`**, not `3104`. The internal upstream files service listens on `3104` *inside* the container; `3125` is the published host port (per upstream `docker-compose.example.yml`). The Unraid template's *Files Server Port* field reflects this: container target `3104`, default host port `3125`. |
+
+| Volume | Purpose |
+|---|---|
+| `/var/lib/server/logs` | Server logs |
+| `/opt/server/packages/files/dist/uploads` | Encrypted file uploads |
 
 A full upstream-aligned [`examples/.env.example`](examples/.env.example) is
 included for reference / non-Unraid use.
@@ -495,9 +546,13 @@ In the NPM UI, **Hosts → Proxy Hosts → Add Proxy Host**:
 Then in the Standard Notes template, set:
 
 - `COOKIE_DOMAIN=standardnotesserver.mydomain.tld`
+  — **bare domain only**, no `https://`, no trailing slash.
 - (optional) `PUBLIC_FILES_SERVER_URL=https://files.standardnotesserver.mydomain.tld`
-  if and only if you also create a separate proxy host for the files
-  server (see below).
+  — **full HTTPS URL** (with `https://`); set only if you also create a
+  separate proxy host for the files server (see below).
+
+In the Standard Notes desktop / mobile / web client, the **Custom Sync
+Server** field is also a full HTTPS URL: `https://standardnotesserver.mydomain.tld`.
 
 ### Files server — is a second subdomain required?
 
@@ -505,12 +560,14 @@ Then in the Standard Notes template, set:
 for any **fully configured public** setup with attachments it is the
 recommended path.
 
-The Standard Notes **files server** listens on its own port (`3125` on
-the host → `3104` in the container) and is the upload/download
-endpoint for attachments. The official Docker docs expose the sync
-server on `:3000` and the files server on `:3125` and configure
-`PUBLIC_FILES_SERVER_URL` to a separate URL — that is the upstream
-shape. Two options:
+The Standard Notes **files server** listens on container port `3104`
+internally; the upstream `docker-compose.example.yml` publishes that as
+host port `3125` (mapping `3125:3104`). Forward your reverse proxy to
+**host port 3125** — never to `3104` directly, since `3104` is the
+internal container port and is not exposed by this template. The
+official Docker docs expose the sync server on `:3000` and the files
+server on `:3125` and configure `PUBLIC_FILES_SERVER_URL` to a separate
+URL — that is the upstream shape. Two options:
 
 1. **Skip attachments (simplest).** Leave **Public Files Server URL**
    empty. Note creation, editing, and sync all work — only attachment

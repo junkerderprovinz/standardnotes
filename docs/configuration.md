@@ -60,7 +60,7 @@ with `openssl rand -hex 32` (one invocation per variable).
 | Container Port | Host Port | Purpose |
 |---|---|---|
 | `3000/tcp` | `3000` | API gateway. Put behind a reverse proxy. |
-| `3104/tcp` | `3125` | Files server. Per upstream defaults. |
+| `3104/tcp` | `3125` | Files server. Internal upstream files service listens on `3104` inside the container; `3125` is the published host port (per upstream `docker-compose.example.yml`). **Forward your reverse proxy to host port `3125`, not `3104`.** The Unraid template field *Files Server Port* uses `Target=3104` (container) with `Default=3125` (host). |
 
 ## Volumes
 
@@ -73,7 +73,20 @@ with `openssl rand -hex 32` (one invocation per variable).
 
 | Variable | Default | Notes |
 |---|---|---|
-| `PUBLIC_FILES_SERVER_URL` | *(empty)* | Set to the public HTTPS URL of the files server when reverse-proxying it on a different hostname. |
+| `PUBLIC_FILES_SERVER_URL` | *(empty)* | **Full HTTPS URL** of the files server — *includes* `https://`. Example: `https://files.standardnotesserver.mydomain.tld`. Set only when you reverse-proxy the files server on its own hostname. |
+| `COOKIE_DOMAIN` | *(empty)* | **Bare domain only** — *no* protocol, *no* `https://`, *no* trailing slash, *no* path. Example: `standardnotesserver.mydomain.tld`. Wrong: `https://standardnotesserver.mydomain.tld` (URL, not a domain). Must match the public host the reverse proxy serves over HTTPS. |
+
+### `https://` placement — quick reference
+
+| Setting | Where it lives | Value type | Includes `https://`? | Example |
+|---|---|---|---|---|
+| `COOKIE_DOMAIN` | Server env / Unraid template | Bare domain | **No** | `standardnotesserver.mydomain.tld` |
+| `PUBLIC_FILES_SERVER_URL` | Server env / Unraid template | Full HTTPS URL | **Yes** | `https://files.standardnotesserver.mydomain.tld` |
+| Custom Sync Server | Standard Notes client / web app UI | Full HTTPS URL | **Yes** | `https://standardnotesserver.mydomain.tld` |
+
+A misplaced `https://` in `COOKIE_DOMAIN` is one of the most common
+self-host pitfalls and has been linked to the duplicate-loop class of
+bug. See [`docs/sync-loop-troubleshooting.md`](sync-loop-troubleshooting.md).
 
 For anything beyond this — disabling user registration, custom SMTP,
 extension server, payments — refer to the upstream

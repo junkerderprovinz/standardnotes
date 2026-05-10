@@ -5,7 +5,162 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
-## Latest pass — heading, MIT, Lint/Build CI split
+## Latest pass — explicit `https://` placement, files port 3125 vs 3104
+
+User reported a misconfiguration where `COOKIE_DOMAIN` had been set to a
+full URL (`https://...` and a wrong domain), causing session breakage.
+This pass documents — everywhere the user is likely to look — exactly
+where `https://` belongs and where it does not, plus clarifies that the
+template's *Files Server Port* maps host `3125` to container `3104`
+(per upstream `docker-compose.example.yml`), so reverse proxies must
+forward to host `3125`, not container `3104`.
+
+### Settings shape — single source of truth
+
+| Setting | Where it lives | Value type | Includes `https://`? | Example |
+|---|---|---|---|---|
+| `COOKIE_DOMAIN` | Server env / Unraid template | **Bare domain** | ❌ No | `standardnotesserver.mydomain.tld` |
+| `PUBLIC_FILES_SERVER_URL` | Server env / Unraid template | **Full HTTPS URL** | ✅ Yes | `https://files.standardnotesserver.mydomain.tld` |
+| Custom Sync Server | Standard Notes client / web app UI | **Full HTTPS URL** | ✅ Yes | `https://standardnotesserver.mydomain.tld` |
+
+### What changed in this pass
+
+- **`templates/standardnotes-server.xml`**:
+  - `<Overview>` gained an explicit "HTTPS — where it belongs and where
+    it doesn't" block (three-line matrix: bare domain for
+    `COOKIE_DOMAIN`, full HTTPS URL for `PUBLIC_FILES_SERVER_URL`, full
+    HTTPS URL for the client's Custom Sync Server).
+  - `<Overview>` files-port wording rewritten: host `3125` → container
+    `3104` (per upstream `docker-compose.example.yml`); `3104` is the
+    *internal* upstream service port; `3125` is what your reverse proxy
+    forwards to.
+  - `Public Files Server URL` description: explicitly says "FULL HTTPS
+    URL — INCLUDES the `https://` scheme".
+  - `Cookie Domain` description: explicitly says "BARE DOMAIN ONLY —
+    NO protocol, NO `https://`, NO trailing slash, NO path", with a
+    correct/wrong example pair, and a note that `Custom Sync Server` in
+    the client *is* a full HTTPS URL.
+  - `Files Server Port` description: spells out that `Target=3104` is
+    the container port, `Default=3125` is the host port (matches
+    upstream `3125:3104` mapping), and that NPM / Unraid users must
+    forward to **host** port `3125`, not `3104`.
+- **`README.md`**:
+  - § 0 gained a new "`https://` — where it belongs and where it does
+    NOT" subsection with the three-row matrix above and a paragraph on
+    the failure mode of `COOKIE_DOMAIN=https://...`.
+  - § 0 gained a new "Emergency checklist — duplicates happening RIGHT
+    NOW" with six numbered steps: stop clients, stop server, do not
+    reconnect, check Redis, check `COOKIE_DOMAIN` / Custom Sync Server
+    URL, delete/recreate test account if it duplicated.
+  - § 3 example values table: split the cookie-domain row from the
+    files-server URL row from the Custom Sync Server row, each
+    annotated with bare-domain vs full-URL.
+  - § 6 ports table: split into a 3-column table (Host / Container /
+    Purpose) and added an inline note on `3125 → 3104` semantics.
+  - § 6 env-var table: `COOKIE_DOMAIN` and `PUBLIC_FILES_SERVER_URL`
+    descriptions tightened with explicit ✅ / ❌ examples.
+  - § 8 NPM section: `COOKIE_DOMAIN` / `PUBLIC_FILES_SERVER_URL` /
+    Custom Sync Server triplet called out side-by-side after the NPM
+    setup steps.
+  - § 8 files-server subsection: rewritten to make "forward to host
+    port `3125`, not `3104`" the lead.
+- **`docs/configuration.md`**:
+  - Optional table now includes both `PUBLIC_FILES_SERVER_URL` (full
+    HTTPS URL) and `COOKIE_DOMAIN` (bare domain), each with explicit
+    correct/wrong example.
+  - New "`https://` placement — quick reference" three-row table after
+    the Optional table.
+  - Files server Ports row gained the "forward to host port `3125`,
+    not `3104`" note.
+- **`docs/sync-loop-troubleshooting.md`**:
+  - New top-level "Emergency checklist (duplicate-loop happening
+    NOW)" section between the leading callout and § 0. Six numbered
+    steps (stop clients, stop server, don't reconnect, check Redis,
+    check `COOKIE_DOMAIN` shape & Custom Sync Server URL shape,
+    delete/recreate test account).
+  - § 4 `COOKIE_DOMAIN` checklist line replaced with the explicit
+    three-row matrix (bare domain vs full HTTPS URL).
+  - § 4 gained a new line on Files Server Port: forward to host
+    `3125`, not `3104`, with the upstream `3125:3104` reference.
+- **`examples/.env.example`**:
+  - `PUBLIC_FILES_SERVER_URL` comment block: leads with "FULL HTTPS
+    URL — INCLUDES `https://`"; reminder block on `3125:3104` and
+    "forward to host 3125, NOT 3104".
+  - `COOKIE_DOMAIN` comment block: leads with "BARE DOMAIN ONLY. No
+    protocol, NO `https://`"; quick-reference triplet aligned in a
+    `# COOKIE_DOMAIN = ... / # PUBLIC_FILES_SERVER_URL = ... /
+    # Custom Sync Server = ...` block.
+
+### Decisions kept from earlier passes
+
+- Container name `StandardNotesServer` (server XML).
+- MariaDB-only wording everywhere user-facing.
+- Generic example domains `standardnotesserver.mydomain.tld` and
+  `files.standardnotesserver.mydomain.tld`.
+- `<Config>` ordering preserved (Public Files Server URL → Files
+  Server Port → Cookie Domain).
+- `Target=3104` / `Default=3125` mapping confirmed against
+  `/home/user/workspace/standardnotes_docker-compose.example.yml`
+  (`3125:3104` in `services.server.ports`). No XML port-target change
+  was needed; only wording.
+
+### Validation (this pass)
+
+```
+$ python3 -c "import xml.etree.ElementTree as ET
+> for f in ['templates/standardnotes-server.xml',
+>           'templates/standardnotes-localstack.xml',
+>           '.github/assets/banner.svg',
+>           '.github/assets/icon.svg']:
+>     ET.parse(f); print('ok', f)"
+ok templates/standardnotes-server.xml
+ok templates/standardnotes-localstack.xml
+ok .github/assets/banner.svg
+ok .github/assets/icon.svg
+
+$ grep -nE "COOKIE_DOMAIN\s*=\s*https" README.md examples/.env.example \
+    docs/*.md templates/*.xml
+README.md:108:If you accidentally set `COOKIE_DOMAIN=https://standardnotesserver.mydomain.tld`,
+# (only match — the wrong-usage example in the new § 0 explainer.
+#  No live values use https:// in COOKIE_DOMAIN.)
+```
+
+### Files changed in this pass
+
+```
+standardnotes-unraid/
+├── README.md                                # § 0 https://-matrix + emergency
+│                                            # checklist; § 3 example table split;
+│                                            # § 6 ports table reshaped;
+│                                            # § 6 env-var table tightened;
+│                                            # § 8 NPM triplet + files-port lead
+├── HANDOFF.md                               # this entry
+├── docs/
+│   ├── configuration.md                     # COOKIE_DOMAIN added, Optional
+│   │                                        # table widened, https://-placement
+│   │                                        # quick reference, files-port note
+│   └── sync-loop-troubleshooting.md         # emergency checklist, § 4 matrix,
+│                                            # § 4 files-port line
+├── examples/
+│   └── .env.example                         # full HTTPS URL vs bare domain
+│                                            # leads, files-port reminder
+└── templates/
+    └── standardnotes-server.xml             # Overview HTTPS-placement block,
+                                             # PUBLIC_FILES_SERVER_URL "full
+                                             # HTTPS URL" wording,
+                                             # COOKIE_DOMAIN "bare domain
+                                             # only" wording, Files Server
+                                             # Port 3125→3104 explanation
+```
+
+### Publishing status
+
+Still **paused**. No `git push`, no remote add, no CA submission. This
+pass is local-only, ready for the user to review.
+
+---
+
+## Earlier pass — heading, MIT, Lint/Build CI split
 
 - **README heading** is now `Standard Notes Server for Unraid` (was
   `Standard Notes for Unraid`). The banner image's `alt` text is updated

@@ -33,11 +33,23 @@
     &#xD;
     Pre-configured:&#xD;
     • Server port 3000/tcp (HTTP API gateway, put behind your reverse proxy)&#xD;
-    • Files port 3125 host -> 3104 container (uploads / files server)&#xD;
+    • Files port: host 3125 -> container 3104 (per upstream&#xD;
+      docker-compose.example.yml). The internal upstream files service&#xD;
+      listens on 3104 inside the container; 3125 is the host/public&#xD;
+      port your reverse proxy must forward to.&#xD;
     • Persistent volumes for /var/lib/server/logs and the uploads directory&#xD;
     • DB_TYPE=mysql (internal driver value required for MariaDB —&#xD;
       Standard Notes / TypeORM uses the "mysql" driver string to talk&#xD;
       to MariaDB), CACHE_TYPE=redis (per upstream .env.sample)&#xD;
+    &#xD;
+    HTTPS — where it belongs and where it doesn't:&#xD;
+    • COOKIE_DOMAIN: BARE DOMAIN, no https://. Example:&#xD;
+      standardnotesserver.mydomain.tld&#xD;
+    • PUBLIC_FILES_SERVER_URL: FULL HTTPS URL with https://. Example:&#xD;
+      https://files.standardnotesserver.mydomain.tld&#xD;
+    • Custom Sync Server (entered in the Standard Notes client / web app):&#xD;
+      FULL HTTPS URL with https://. Example:&#xD;
+      https://standardnotesserver.mydomain.tld&#xD;
     &#xD;
     Notes:&#xD;
     • UNOFFICIAL community template. Standard Notes does not provide&#xD;
@@ -165,16 +177,16 @@
        ======================================================== -->
   <Config Name="Public Files Server URL"
           Target="PUBLIC_FILES_SERVER_URL" Default="" Mode=""
-          Description="Optional. Public HTTPS URL of the files server (attachments). Example: https://files.standardnotesserver.mydomain.tld. Set ONLY if you reverse-proxy the files server on its own subdomain (see Files Server Port below). Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
+          Description="Optional. FULL HTTPS URL of the files server (attachments) — INCLUDES the https:// scheme. Example: https://files.standardnotesserver.mydomain.tld. Set ONLY if you reverse-proxy the files server on its own subdomain (see Files Server Port below). Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
           Type="Variable" Display="always" Required="false" Mask="false"/>
 
   <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
-          Description="Host port for the files server (container 3104). To enable attachments, create a SECOND reverse-proxy host: e.g. in Nginx Proxy Manager add a Proxy Host with Domain Names = files.standardnotesserver.mydomain.tld, Scheme = http, Forward Hostname/IP = this StandardNotesServer container's IP, Forward Port = 3125, Websockets ON, then on the SSL tab request a Let's Encrypt cert and enable Force SSL + HTTP/2. Then set Public Files Server URL above to https://files.standardnotesserver.mydomain.tld. Keep host port 3125 unless you also change the proxy host's Forward Port."
+          Description="Host port 3125 → container port 3104. Upstream's docker-compose.example.yml maps the host's 3125 to the internal files service on 3104, so this template uses Target=3104 (container) with Default=3125 (host). In Unraid / Nginx Proxy Manager forward attachment traffic to host port 3125 (NOT 3104). Recipe: NPM Proxy Host with Domain Names = files.standardnotesserver.mydomain.tld, Scheme = http, Forward Hostname/IP = StandardNotesServer container IP, Forward Port = 3125, Websockets ON, SSL tab → Let's Encrypt + Force SSL + HTTP/2. Then set Public Files Server URL above to https://files.standardnotesserver.mydomain.tld."
           Type="Port" Display="always" Required="true" Mask="false">3125</Config>
 
   <Config Name="Cookie Domain"
           Target="COOKIE_DOMAIN" Default="" Mode=""
-          Description="Public sync domain used by Standard Notes clients, e.g. standardnotesserver.mydomain.tld. Clients enter https://standardnotesserver.mydomain.tld as their Custom Sync Server — no separate 'container domain' env var is required for this template. Strongly recommended behind a reverse proxy; HTTPS is required for Secure cookies outside localhost. Wrong/empty value can trigger 'No cookies provided for cookie-based session token' and a /v1/items session loop linked to runaway note duplication. See docs/sync-loop-troubleshooting.md."
+          Description="BARE DOMAIN ONLY — NO protocol, NO https://, NO trailing slash, NO path. Example: standardnotesserver.mydomain.tld (correct). Wrong: https://standardnotesserver.mydomain.tld (this is a URL, not a domain — putting it here breaks session cookies). Must match the public host your reverse proxy serves over HTTPS. The Custom Sync Server URL entered into Standard Notes clients/web app is a separate value and IS a full HTTPS URL: https://standardnotesserver.mydomain.tld. HTTPS is required for Secure cookies outside localhost. A wrong COOKIE_DOMAIN (especially one with https:// in it) triggers 'No cookies provided for cookie-based session token' and a /v1/items session loop that has been linked to runaway note duplication. See docs/sync-loop-troubleshooting.md."
           Type="Variable" Display="always" Required="false" Mask="false"/>
 
 </Container>
