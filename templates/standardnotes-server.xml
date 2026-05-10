@@ -1,0 +1,179 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>StandardNotes-Server</Name>
+  <Repository>standardnotes/server:latest</Repository>
+  <Registry>https://hub.docker.com/r/standardnotes/server</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/junkerderprovinz/standardnotes/issues</Support>
+  <Project>https://standardnotes.com</Project>
+  <Overview>
+    Standard Notes – self-hosted backend for Unraid (community template).&#xD;
+    End-to-end encrypted notes, sync server, files server, auth and API gateway&#xD;
+    bundled into a single image (standardnotes/server) maintained upstream.&#xD;
+    &#xD;
+    IMPORTANT: This template installs ONLY the Standard Notes server image.&#xD;
+    You must run a MariaDB and a Redis container SEPARATELY before&#xD;
+    starting this container. See the project README for the recommended&#xD;
+    Unraid templates and required DB/Redis settings.&#xD;
+    &#xD;
+    Required, in this order:&#xD;
+      1. MariaDB container (for example MariaDB-Official from CA),&#xD;
+         empty database "standard_notes_db" with user "std_notes_user".&#xD;
+      2. Redis container (Redis-Official from CA, default port 6379).&#xD;
+      3. (Optional) The companion StandardNotes-LocalStack template, which&#xD;
+         provides the SNS/SQS endpoints expected by the upstream image.&#xD;
+      4. This template – Standard Notes server.&#xD;
+    &#xD;
+    Pre-flight: generate THREE 32-byte hex secrets and paste them into the&#xD;
+    fields below. On any Linux/Mac shell:&#xD;
+      openssl rand -hex 32      # repeat 3x&#xD;
+    &#xD;
+    What's pre-configured in this template:&#xD;
+    • Server port 3000/tcp (HTTP API gateway, put behind your reverse proxy)&#xD;
+    • Files port 3125 host -> 3104 container (uploads / files server)&#xD;
+    • Persistent volumes for /var/lib/server/logs and the uploads directory&#xD;
+    • DB_TYPE=mysql (internal driver value required for MariaDB —&#xD;
+      Standard Notes / TypeORM uses the "mysql" driver string to talk&#xD;
+      to MariaDB), CACHE_TYPE=redis (per upstream .env.sample)&#xD;
+    • All env variables exposed as Unraid fields, with safe defaults&#xD;
+    &#xD;
+    Notes:&#xD;
+    • This is an UNOFFICIAL community template. Standard Notes does not&#xD;
+      provide support for self-hosted setups beyond the official Docker&#xD;
+      docs at https://standardnotes.com/help/self-hosting/docker.&#xD;
+    • The web client (standardnotes/web) is optional and is NOT part of&#xD;
+      this template. Most users connect with the official desktop / mobile&#xD;
+      apps and just point them at https://your-domain/ via reverse proxy.&#xD;
+    • Always expose Standard Notes via HTTPS (SWAG, Nginx Proxy Manager,&#xD;
+      Traefik, Caddy, …). Do not publish port 3000 to the public internet&#xD;
+      directly.&#xD;
+    &#xD;
+    SYNC-LOOP / DUPLICATE-NOTES WARNING:&#xD;
+    Misconfiguration of Redis, COOKIE_DOMAIN, the reverse proxy, or the&#xD;
+    image tag can trigger massive note duplication (a single new note&#xD;
+    replicating dozens of times). ALWAYS test with a fresh throwaway&#xD;
+    account and one client only before migrating real notes. If&#xD;
+    duplication starts, stop all clients, stop this container, and&#xD;
+    inspect the logs/database before continuing. See the project README&#xD;
+    section "Sync-Loop / Duplicate Notes Guardrails" and&#xD;
+    docs/sync-loop-troubleshooting.md for the full checklist.&#xD;
+    &#xD;
+    Image tag (Repository field above): defaults to&#xD;
+    standardnotes/server:latest. To pin a known-good release, change&#xD;
+    the tag in the Repository field, e.g. standardnotes/server:1.32.0.&#xD;
+    Change tags carefully — downgrading across schema migrations can&#xD;
+    leave the database unreadable to the older image.&#xD;
+  </Overview>
+  <Category>Productivity: Cloud: Security:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/healthcheck</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/templates/standardnotes-server.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes/main/.github/assets/icon.svg</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>A separately running MariaDB container and a Redis container reachable from this container's network (bridge or routable LAN). See the project README for details.</Requires>
+
+  <!-- ========================================================
+       PORTS
+       ======================================================== -->
+  <Config Name="API / Gateway Port" Target="3000" Default="3000" Mode="tcp"
+          Description="HTTP port of the Standard Notes API gateway. Put this behind a reverse proxy with HTTPS termination — do NOT expose directly to the public internet."
+          Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+
+  <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
+          Description="Files server port. Upstream maps host 3125 → container 3104. Keep this default unless you know why you are changing it."
+          Type="Port" Display="always" Required="true" Mask="false">3125</Config>
+
+  <!-- ========================================================
+       PATHS
+       ======================================================== -->
+  <Config Name="Logs (/var/lib/server/logs)" Target="/var/lib/server/logs"
+          Default="/mnt/user/appdata/standardnotes/logs" Mode="rw"
+          Description="Persistent server logs."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/standardnotes/logs</Config>
+
+  <Config Name="Uploads (files server)"
+          Target="/opt/server/packages/files/dist/uploads"
+          Default="/mnt/user/appdata/standardnotes/uploads" Mode="rw"
+          Description="Persistent storage for the encrypted file uploads served by the files server."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/standardnotes/uploads</Config>
+
+  <!-- ========================================================
+       DATABASE (must be supplied by a separate MariaDB container)
+       ======================================================== -->
+  <Config Name="DB Host (DB_HOST)" Target="DB_HOST" Default="" Mode=""
+          Description="REQUIRED. Hostname or IP of your MariaDB container. When MariaDB and Standard Notes share the same Unraid host on a custom Docker bridge network, STRONGLY prefer the Unraid container name (e.g. 'mariadb') — IPs of bridge containers change on restart. When MariaDB lives on a different host / VLAN (e.g. 192.168.20.71), a static LAN IP is fine. Either way the address must be reachable from this container."
+          Type="Variable" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="DB Port (DB_PORT)" Target="DB_PORT" Default="3306" Mode=""
+          Description="Port of your MariaDB server. Default 3306."
+          Type="Variable" Display="always" Required="true" Mask="false">3306</Config>
+
+  <Config Name="DB Username (DB_USERNAME)" Target="DB_USERNAME" Default="std_notes_user" Mode=""
+          Description="Database user. Must match the user you created in MariaDB."
+          Type="Variable" Display="always" Required="true" Mask="false">std_notes_user</Config>
+
+  <Config Name="DB Password (DB_PASSWORD)" Target="DB_PASSWORD" Default="" Mode=""
+          Description="Database password for DB_USERNAME. Required."
+          Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="DB Name (DB_DATABASE)" Target="DB_DATABASE" Default="standard_notes_db" Mode=""
+          Description="Database name. Must already exist (empty is fine — migrations run automatically on first start)."
+          Type="Variable" Display="always" Required="true" Mask="false">standard_notes_db</Config>
+
+  <Config Name="DB Type (DB_TYPE)" Target="DB_TYPE" Default="mysql" Mode=""
+          Description="Database driver. Leave at 'mysql'. This is an INTERNAL DRIVER VALUE REQUIRED FOR MARIADB — Standard Notes / TypeORM uses the 'mysql' driver string to talk to MariaDB. Do not change this; the templates and docs assume MariaDB."
+          Type="Variable" Display="advanced" Required="true" Mask="false">mysql</Config>
+
+  <!-- ========================================================
+       CACHE (must be supplied by a separate Redis container)
+       ======================================================== -->
+  <Config Name="Redis Host (REDIS_HOST)" Target="REDIS_HOST" Default="" Mode=""
+          Description="REQUIRED. Hostname or IP of your Redis container. When Redis and Standard Notes share the same Unraid host on a custom Docker bridge network, STRONGLY prefer the Unraid container name (e.g. 'redis') — bridge IPs change on restart. When Redis lives on a different host / VLAN (e.g. 192.168.20.72), a static LAN IP is fine. Test reachability from this container with: nc -zv &lt;host&gt; 6379. If unreachable, the server logs ECONNREFUSED and sync state can de-duplicate incorrectly across requests, which has been linked to runaway note duplication. See docs/sync-loop-troubleshooting.md."
+          Type="Variable" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Redis Port (REDIS_PORT)" Target="REDIS_PORT" Default="6379" Mode=""
+          Description="REQUIRED. Port of your Redis server. Default 6379. Must match what the Redis container actually listens on. Test with: nc -zv &lt;redis-host&gt; 6379 from inside this container."
+          Type="Variable" Display="always" Required="true" Mask="false">6379</Config>
+
+  <Config Name="Cache Type (CACHE_TYPE)" Target="CACHE_TYPE" Default="redis" Mode=""
+          Description="Cache backend. Leave at 'redis'."
+          Type="Variable" Display="advanced" Required="true" Mask="false">redis</Config>
+
+  <!-- ========================================================
+       SECRETS  — generate with `openssl rand -hex 32`
+       ======================================================== -->
+  <Config Name="JWT Secret (AUTH_JWT_SECRET)" Target="AUTH_JWT_SECRET" Default="" Mode=""
+          Description="REQUIRED. 32-byte hex secret. Generate with: openssl rand -hex 32. Changing this invalidates all existing sessions."
+          Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="Auth Server Encryption Key (AUTH_SERVER_ENCRYPTION_SERVER_KEY)"
+          Target="AUTH_SERVER_ENCRYPTION_SERVER_KEY" Default="" Mode=""
+          Description="REQUIRED. 32-byte hex secret. Generate with: openssl rand -hex 32. Encrypts data at rest on the server side. Losing this means losing access to data — back it up."
+          Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="Valet Token Secret (VALET_TOKEN_SECRET)"
+          Target="VALET_TOKEN_SECRET" Default="" Mode=""
+          Description="REQUIRED. 32-byte hex secret. Generate with: openssl rand -hex 32. Signs short-lived upload/download tokens for the files server."
+          Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <!-- ========================================================
+       ADVANCED / OPTIONAL
+       ======================================================== -->
+  <Config Name="Public Files Server URL (PUBLIC_FILES_SERVER_URL)"
+          Target="PUBLIC_FILES_SERVER_URL" Default="" Mode=""
+          Description="Optional. The publicly reachable HTTPS URL of the files server, e.g. https://files.standardnotes.bottich.lol. Set this ONLY if you reverse-proxy the files server on its own hostname/subdomain (recommended for attachment support). Leave empty if you do not need attachments — note creation, editing, and sync work without it. Single-domain path proxying (one host, /files/* prefix) is not reliably supported by the upstream image."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Cookie Domain (COOKIE_DOMAIN)"
+          Target="COOKIE_DOMAIN" Default="" Mode=""
+          Description="Optional but STRONGLY RECOMMENDED behind a reverse proxy. Must match the public sync host (e.g. standardnotes.bottich.lol). HTTPS is required for Secure cookies outside localhost. A wrong or empty value here can cause &quot;No cookies provided for cookie-based session token&quot; in the server log and trigger a /v1/items session loop, which has been linked to runaway note duplication. Leave empty only if you access the server directly on localhost. See docs/sync-loop-troubleshooting.md."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+</Container>

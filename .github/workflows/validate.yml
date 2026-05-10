@@ -1,0 +1,53 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  xml-svg-wellformed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate XML and SVG well-formedness (stdlib only)
+        run: |
+          python3 - <<'PY'
+          import sys, glob, xml.etree.ElementTree as ET
+
+          targets = sorted(set(
+              glob.glob("templates/*.xml")
+              + glob.glob(".github/assets/*.svg")
+          ))
+
+          if not targets:
+              print("No XML/SVG files found to validate.", file=sys.stderr)
+              sys.exit(1)
+
+          failed = []
+          for path in targets:
+              try:
+                  ET.parse(path)
+                  print(f"ok   {path}")
+              except ET.ParseError as e:
+                  print(f"FAIL {path}: {e}", file=sys.stderr)
+                  failed.append(path)
+
+          if failed:
+              sys.exit(f"{len(failed)} file(s) failed to parse")
+          PY
+
+      - name: Check for leftover placeholders
+        run: |
+          if grep -rnE "REPLACE_WITH_[A-Z_]+" templates README.md docs 2>/dev/null; then
+            echo "::error::Found unreplaced REPLACE_WITH_* placeholder(s)."
+            exit 1
+          fi
