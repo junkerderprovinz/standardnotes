@@ -5,6 +5,130 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
+## Latest pass — static-IP / VLAN install path, redis:7-alpine disambiguation
+
+User clarified two things from a live `br0.20` VLAN install where each
+container has its own fixed IP:
+
+1. They already run an **official Redis container** for the sync
+   cache. The `redis:7-alpine` references in earlier docs caused
+   confusion — they were never meant to be a second Redis server,
+   only a disposable client container to get `redis-cli` on demand.
+   The throwaway `docker run --rm redis:7-alpine redis-cli ... ping`
+   they tried timed out because it ran from the default Docker
+   bridge, which on a `br0.20` VLAN install cannot route to the
+   VLAN Redis container.
+2. The user has no LocalStack container running yet:
+   `docker exec StandardNotesServer getent hosts localstack` is
+   empty and a TCP probe to `localstack:4566` returns
+   `getaddrinfo ENOTFOUND localstack`. For their VLAN / fixed-IP
+   setup, the working install recipe is: install
+   `StandardNotes-LocalStack` on the **same `br0.<vlan>`** with its
+   own **fixed IP** (e.g. `192.168.x.x`), then **append**
+   `--add-host=localstack:<LocalStack-IP>` to `StandardNotesServer`'s
+   *Extra Parameters* and restart the server container.
+
+This pass rewords the Redis-test guidance everywhere so the
+authoritative test is the **in-container `node -e` TCP probe**, and
+the disposable `redis:7-alpine redis-cli` form is presented only as
+a convenience that **requires `--network`** on `br0` / macvlan / VLAN
+/ static-IP setups. The LocalStack install path is spelled out for
+the static-IP case as: install on same VLAN + fixed IP + `--add-host`
+on the server.
+
+### What changed in this pass
+
+- **`README.md`**:
+  - § 0 *Emergency checklist* step 4 (Redis): rewritten. Primary test
+    is the in-container `node -e` probe; the `docker run --rm
+    redis:7-alpine redis-cli ... ping` form is moved to a callout
+    note that explicitly says `redis:7-alpine` is a disposable
+    client container (not a second Redis server) and that it
+    **requires `--network <same-network-as-redis>`** on `br0` /
+    macvlan / VLAN / static-IP installs, otherwise the default
+    bridge cannot route to the VLAN Redis and the test times out
+    even when Redis is healthy.
+  - § 0 *Emergency checklist* step 5 (LocalStack) callout box:
+    static-IP / `br0` / macvlan note rewritten to spell out the
+    install recipe — same-VLAN container + fixed IP +
+    `--add-host=localstack:<LocalStack-IP>` on
+    StandardNotesServer's *Extra Parameters* + restart.
+  - § 3 *Step 2 — Start LocalStack* now has explicit per-network-type
+    install instructions: user-defined Docker network path
+    (alias `localstack`) and the `br0` / macvlan / VLAN / static-IP
+    path (fixed IP on same VLAN + `--add-host` on the server +
+    restart). The verification callout now points out that an empty
+    `getent hosts localstack` on a static-IP install almost always
+    means the `--add-host` line is missing.
+  - § 11 *Notes are being duplicated* duplicates checklist: the
+    Redis verification step now uses the in-container `node -e`
+    probe as the authoritative test and notes that the
+    `redis:7-alpine` throwaway is only valid with `--network` and
+    is otherwise misleading on VLAN setups.
+  - § 11 *SNS / SQS errors* `<details>` block: empty-`getent`
+    recovery now names the static-IP / VLAN install recipe (same
+    VLAN + fixed IP + `--add-host` + restart), not just the bare
+    `--add-host` flag.
+
+- **`docs/sync-loop-troubleshooting.md`**:
+  - § Emergency checklist step 4 (Redis) and § 2 *Redis reachability*
+    rewritten to lead with the in-container `node -e` probe as the
+    authoritative test. The `redis:7-alpine` disposable-client form
+    is kept as an optional CLI alternative with explicit `--network`
+    caveats and a "not a second Redis server" disclaimer.
+  - Static-IP / `br0` / macvlan / VLAN callout in both the
+    emergency checklist (step 5) and § 2a *LocalStack reachability*
+    rewritten to spell out the install recipe — same VLAN, fixed
+    IP, `--add-host` on the server, restart — instead of just
+    saying "add `--add-host`".
+
+- **`templates/standardnotes-server.xml`**:
+  - `<Overview>` *LOCALSTACK / ENOTFOUND localstack WARNING* block
+    rewritten with two labelled fix paths: (A) user-defined Docker
+    network + alias, and (B) `br0` / macvlan / VLAN / static-IP
+    install — same VLAN + fixed IP + `--add-host` appended to
+    *Extra Parameters* + restart. Added a Redis-test note that
+    `docker run --rm redis:7-alpine redis-cli ... ping` from the
+    default bridge is **not** a reliable test on static-IP setups
+    and that the authoritative test runs inside this container.
+  - `<Requires>` extended to call out the static-IP / VLAN install
+    recipe with the `--add-host` line.
+  - *Redis Port* Config description rewritten — authoritative test
+    is the in-container `node -e` probe; `redis:7-alpine` is named
+    as a disposable redis-cli client (not a second Redis server)
+    and the default-bridge / VLAN routing caveat is stated.
+
+- **`templates/standardnotes-localstack.xml`**:
+  - `<Overview>` *HOSTNAME RESOLUTION* block rewritten with two
+    explicitly labelled fix paths (user-defined Docker network vs.
+    br0 / macvlan / VLAN / static-IP install with same VLAN + fixed
+    IP + `--add-host` on the server + restart).
+  - `HOSTNAME_EXTERNAL` Config description updated to match the
+    new fix recipe.
+
+### Preserved across this pass
+
+- `COOKIE_DOMAIN` = bare domain only (no `https://`), distinct from
+  the client's *Custom Sync Server* URL which is a full HTTPS URL.
+- `PUBLIC_FILES_SERVER_URL` = full HTTPS URL (with `https://`).
+- Files port mapping: host `3125` → container `3104`.
+- MariaDB-only (`DB_TYPE=mysql` is the internal driver value).
+- Container name `StandardNotesServer`; LocalStack companion
+  `StandardNotes-LocalStack`; LocalStack alias / hostname
+  `localstack`.
+- Generic example domains (`standardnotesserver.mydomain.tld`,
+  `files.standardnotesserver.mydomain.tld`).
+
+### Validation
+
+- `python3 -c "xml.etree.ElementTree.parse(...)"` — both
+  `templates/*.xml` parse cleanly.
+- Same parse on `.github/assets/banner.svg` and
+  `.github/assets/icon.svg` — both OK.
+- `python3 yaml.safe_load_all` on
+  `.github/workflows/{lint,build}.yml` — both OK.
+- No pushes performed.
+
 ## Latest pass — LocalStack required, Redis/LocalStack reachability
 
 User reported live-install debug findings:

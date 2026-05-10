@@ -85,11 +85,27 @@
     "localstack" resolves from this container BEFORE testing notes.&#xD;
     Quick check from the Unraid host:&#xD;
       docker exec StandardNotesServer getent hosts localstack&#xD;
-    Must print a non-empty line. If empty, the StandardNotesServer&#xD;
-    container is not on the same user-defined Docker network as the&#xD;
-    LocalStack container — put both on a shared user-defined Docker&#xD;
-    network with the alias "localstack", or add&#xD;
-    --add-host=localstack:&lt;LocalStack-IP&gt; to Extra Parameters.&#xD;
+    Must print a non-empty line. If empty, this container is not on&#xD;
+    the same user-defined Docker network as the LocalStack container.&#xD;
+    Two working fixes:&#xD;
+      A) USER-DEFINED DOCKER NETWORK (shared bridge): put both&#xD;
+         containers on the same custom bridge and give the LocalStack&#xD;
+         container the network alias "localstack" (Unraid: Advanced&#xD;
+         → Network alias). Docker's embedded DNS then resolves it.&#xD;
+      B) br0 / macvlan / VLAN / STATIC-IP install (each container&#xD;
+         has its own fixed IP on br0.&lt;vlan&gt;): install&#xD;
+         StandardNotes-LocalStack on the SAME VLAN with a fixed IP&#xD;
+         (e.g. 192.168.x.x), then APPEND this to Extra Parameters&#xD;
+         below:&#xD;
+           --add-host=localstack:&lt;LocalStack-IP&gt;&#xD;
+         Restart this container, then re-run getent hosts localstack&#xD;
+         — it must return that IP.&#xD;
+    Redis test for the same static-IP setup: do NOT rely on&#xD;
+    `docker run --rm redis:7-alpine redis-cli ... ping` from the&#xD;
+    default bridge — it usually cannot route to a VLAN container and&#xD;
+    will time out even when Redis is healthy. The authoritative test&#xD;
+    runs INSIDE this container with a node TCP probe to the real&#xD;
+    Redis IP — see README § 0 and docs/sync-loop-troubleshooting.md.&#xD;
     &#xD;
     Image tag (Repository field above): defaults to&#xD;
     standardnotes/server:latest. To pin a known-good release, change&#xD;
@@ -107,7 +123,7 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>A separately running MariaDB container, a Redis container, and the StandardNotes-LocalStack companion (required companion for the official Standard Notes server image — the worker resolves hostname "localstack" for SNS / SQS; if logs show "getaddrinfo ENOTFOUND localstack", install / start LocalStack and ensure the hostname resolves before testing notes). See the project README for details.</Requires>
+  <Requires>A separately running MariaDB container, a Redis container, and the StandardNotes-LocalStack companion (required companion for the official Standard Notes server image — the worker resolves hostname "localstack" for SNS / SQS; if logs show "getaddrinfo ENOTFOUND localstack", install / start LocalStack and ensure the hostname resolves before testing notes). On br0 / macvlan / VLAN / static-IP installs, give LocalStack a fixed IP on the same VLAN and APPEND `--add-host=localstack:&lt;LocalStack-IP&gt;` to Extra Parameters below. See the project README for details.</Requires>
 
   <!-- ========================================================
        PORTS
@@ -167,7 +183,7 @@
           Type="Variable" Display="always" Required="true" Mask="false">192.168.x.x</Config>
 
   <Config Name="Redis Port" Target="REDIS_PORT" Default="6379" Mode=""
-          Description="REQUIRED. Redis server port. Default 6379. Test with: nc -zv &lt;redis-host&gt; 6379 from inside this container."
+          Description="REQUIRED. Redis server port. Default 6379. Reachability test must run INSIDE this container (same network namespace the server uses): docker exec StandardNotesServer node -e &quot;net.connect(6379,'&lt;redis-host&gt;').on('connect',()=>{console.log('OK');process.exit(0)}).on('error',e=>{console.error(e.message);process.exit(1)})&quot;. On br0 / macvlan / VLAN / static-IP setups, a `docker run --rm redis:7-alpine redis-cli ... ping` from the default bridge is NOT a reliable test (it cannot route to a VLAN container) — that image is only a disposable redis-cli client, not a second Redis server."
           Type="Variable" Display="always" Required="true" Mask="false">6379</Config>
 
   <Config Name="Cache Backend" Target="CACHE_TYPE" Default="redis" Mode=""

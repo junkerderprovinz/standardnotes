@@ -135,19 +135,10 @@ duplicates.
 3. **Do NOT reconnect any existing client.** Especially not your
    long-history account. Each new edit during a loop can spawn more
    duplicates.
-4. **Verify Redis is reachable from Docker / StandardNotesServer.**
-   Quick TCP test from a throwaway container on the Docker host:
-
-    ```bash
-    docker run --rm redis:7-alpine \
-      redis-cli -h 192.168.x.x -p 6379 ping
-    ```
-
-    Expected reply: `PONG`. A timeout (`Could not connect to Redis at
-    192.168.x.x:6379: Operation timed out`) means a firewall / VLAN /
-    `br0` routing problem between the Docker network and the Redis
-    host — fix it before anything else. From inside the running server
-    container (when it is up):
+4. **Verify Redis is reachable from StandardNotesServer.**
+   The authoritative test runs from **inside** the
+   `StandardNotesServer` container, using the actual Redis IP — that
+   is the network namespace the server itself talks to Redis from:
 
     ```bash
     docker exec StandardNotesServer node -e "const net=require('net'); \
@@ -157,9 +148,30 @@ duplicates.
       s.on('error',e=>{console.error(e.message); process.exit(1)});"
     ```
 
-    Replace `192.168.x.x` with your Redis container IP. Tail the
-    server log for `ECONNREFUSED` / connection-timeout lines against
-    that host.
+    Replace `192.168.x.x` with your Redis container IP. Expected:
+    `Redis TCP connected`. A timeout means a firewall / VLAN / `br0`
+    routing problem between the server container's network and the
+    Redis host — fix it before anything else. Tail the server log for
+    `ECONNREFUSED` / connection-timeout lines against that host.
+
+    > 📌 You already run an **official Redis container** for the
+    > sync cache — there is no second Redis server to install. If you
+    > also want a quick CLI ping with `redis-cli`, the
+    > `redis:7-alpine` image can be launched as a **disposable client
+    > container** (no persistent state, no second Redis server):
+    >
+    > ```bash
+    > docker run --rm --network <same-network-as-redis> \
+    >   redis:7-alpine redis-cli -h 192.168.x.x -p 6379 ping
+    > ```
+    >
+    > On `br0` / macvlan / VLAN / static-IP setups the default
+    > `docker run` lands on the **default bridge**, which usually
+    > **cannot route** to a VLAN container — so `--rm redis:7-alpine
+    > redis-cli ping` will time out even when Redis is healthy. Pass
+    > `--network` (or `--ip` on the same `br0` / macvlan network as
+    > Redis), or skip this client test entirely and trust the
+    > in-container `node -e` probe above as the source of truth.
 5. **Verify LocalStack is running and resolvable as `localstack`.**
    The worker resolves the literal hostname `localstack` for SNS /
    SQS, so DNS *and* TCP both have to work:
@@ -180,20 +192,23 @@ duplicates.
     message failed: getaddrinfo ENOTFOUND localstack`; if you see it,
     fix LocalStack reachability *before* reconnecting any client.
 
-    > 📌 **Static IP / `br0` / macvlan.** Docker's built-in DNS
-    > (`127.0.0.11`) only resolves container names when both
+    > 📌 **Static IP / `br0` / macvlan / VLAN.** Docker's built-in
+    > DNS (`127.0.0.11`) only resolves container names when both
     > containers share a **user-defined Docker network**. Containers
-    > assigned a static IP on `br0` / macvlan bypass that DNS server
-    > and will *not* resolve `localstack`. Two working options:
+    > assigned a static IP on `br0` / macvlan / `br0.<vlan>` bypass
+    > that DNS server and will *not* resolve `localstack`. Two
+    > working options:
     >
     > - Put StandardNotesServer and StandardNotes-LocalStack on the
     >   **same user-defined Docker network** (e.g. a custom bridge),
     >   and either name the LocalStack container `localstack` or give
     >   it a network alias `localstack`.
-    > - Or, keep `br0` / macvlan and add an **extra host mapping** so
-    >   the literal name resolves — Unraid template → *Extra Parameters*
-    >   → `--add-host=localstack:<LocalStack-IP>`. `getent hosts
-    >   localstack` must then return that IP.
+    > - Or, keep `br0` / macvlan / VLAN: install
+    >   `StandardNotes-LocalStack` on the **same VLAN** as
+    >   StandardNotesServer with a **fixed IP** (e.g. `192.168.x.x`),
+    >   then **append** `--add-host=localstack:<LocalStack-IP>` to
+    >   StandardNotesServer's *Extra Parameters* and restart it.
+    >   `getent hosts localstack` must then return that IP.
 6. **Check `COOKIE_DOMAIN`.** Verify it is a **bare domain** —
    `standardnotesserver.mydomain.tld`, not `https://...`, not a URL,
    no trailing slash. Verify the Custom Sync Server URL in the client
@@ -414,7 +429,24 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-Loc
 
 In the Unraid Web UI: **Docker** → **Add Container** → in the
 **Template** dropdown, pick **StandardNotes-LocalStack** under
-*User templates*. Hit **Apply**. No further configuration needed.
+*User templates*.
+
+- **User-defined Docker network setup** (server + LocalStack on the
+  same custom bridge): no further configuration needed — give the
+  LocalStack container the network alias `localstack` (Unraid:
+  Advanced → Network alias) and Docker's embedded DNS will handle
+  the rest.
+- **`br0` / macvlan / VLAN / static-IP setup** (e.g. each container
+  pinned to its own fixed IP on `br0.<vlan>`): set the LocalStack
+  container's *Network Type* to the same `br0`-VLAN as
+  `StandardNotesServer` and give it a **fixed IP** (e.g.
+  `192.168.x.x`). Then, in `StandardNotesServer`'s **Extra
+  Parameters**, **append** `--add-host=localstack:<LocalStack-IP>`
+  (substituting the IP you assigned). Docker's embedded DNS does
+  *not* resolve container names across `br0` / macvlan — `--add-host`
+  is what makes the literal name `localstack` resolve in this case.
+
+Hit **Apply**.
 
 > ⚠️ **LocalStack is required for a stable full install** of the
 > official `standardnotes/server` image. The worker process resolves
@@ -432,10 +464,15 @@ In the Unraid Web UI: **Docker** → **Add Container** → in the
 >   s.on('error',e=>{console.error(e.message); process.exit(1)});"
 > ```
 >
-> Both must succeed before connecting any client. See
+> Both must succeed before connecting any client. On `br0` / macvlan
+> / VLAN / static-IP installs, `getent hosts localstack` returning
+> empty (and `getaddrinfo ENOTFOUND localstack` from the node probe)
+> means the `--add-host=localstack:<LocalStack-IP>` mapping is
+> missing from `StandardNotesServer`'s *Extra Parameters* — add it
+> and restart the server container. See
 > [§ 11](#11-troubleshooting) and
 > [`docs/sync-loop-troubleshooting.md`](docs/sync-loop-troubleshooting.md)
-> for DNS / `br0` / macvlan fix-ups when the name does not resolve.
+> for more.
 
 ### Step 3 — Start the Standard Notes server
 
@@ -823,8 +860,10 @@ start — watch the log for errors.
   user-defined Docker network. Either put StandardNotesServer and
   StandardNotes-LocalStack on the **same user-defined Docker
   network** and give LocalStack the network alias `localstack`, or
+  — on `br0` / macvlan / VLAN / static-IP installs — install
+  `StandardNotes-LocalStack` on the same VLAN with a fixed IP and
   add `--add-host=localstack:<LocalStack-IP>` to the server
-  template's *Extra Parameters*.
+  template's *Extra Parameters* (then restart the server container).
 - If you have a deliberate alternative SNS / SQS provider, configure
   the matching upstream env vars instead — but for a default
   community-template install, LocalStack is the supported path.
@@ -846,18 +885,24 @@ start — watch the log for errors.
   `/var/lib/server/logs/files-worker.log` — `SQSError: SQS receive
   message failed: getaddrinfo ENOTFOUND localstack`.
 - Verify `REDIS_HOST` / `REDIS_PORT` point at the right **IP** and
-  that the Redis container is actually reachable from the Docker
-  network and from the StandardNotesServer container:
+  that the Redis container is actually reachable from the
+  StandardNotesServer container (this is the authoritative test —
+  same network namespace the server itself uses):
 
     ```bash
-    docker run --rm redis:7-alpine \
-      redis-cli -h 192.168.x.x -p 6379 ping
     docker exec StandardNotesServer node -e "const net=require('net'); \
       const s=net.connect(6379,'192.168.x.x'); s.setTimeout(5000); \
       s.on('connect',()=>{console.log('Redis TCP connected'); s.end(); process.exit(0)}); \
       s.on('timeout',()=>{console.error('Redis TCP timeout'); process.exit(1)}); \
       s.on('error',e=>{console.error(e.message); process.exit(1)});"
     ```
+
+    A throwaway `docker run --rm redis:7-alpine redis-cli -h ... ping`
+    is only useful **if** it is launched on a network that can route
+    to your Redis container — on `br0` / macvlan / VLAN / static-IP
+    setups the default bridge usually cannot. The `redis:7-alpine`
+    image is not a second Redis server; it is only a way to get a
+    `redis-cli` binary on demand.
 - Verify LocalStack is running and the hostname `localstack`
   resolves from the server container (`docker exec StandardNotesServer
   getent hosts localstack`) — worker logs must not show `ENOTFOUND

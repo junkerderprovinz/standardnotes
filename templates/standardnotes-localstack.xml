@@ -28,13 +28,23 @@
     template is &quot;StandardNotes-LocalStack&quot; for clarity in the Unraid&#xD;
     UI, but the StandardNotesServer container MUST still be able to&#xD;
     resolve the bare name &quot;localstack&quot;. Two working setups:&#xD;
-    • Put StandardNotesServer and this container on the SAME&#xD;
-      user-defined Docker network and give this container the network&#xD;
-      alias &quot;localstack&quot; (Unraid: Advanced → Network alias). Docker's&#xD;
+    • USER-DEFINED DOCKER NETWORK (shared bridge): put&#xD;
+      StandardNotesServer and this container on the SAME custom&#xD;
+      bridge and give this container the network alias&#xD;
+      &quot;localstack&quot; (Unraid: Advanced → Network alias). Docker's&#xD;
       embedded DNS (127.0.0.11) will then resolve the name.&#xD;
-    • Or, if StandardNotesServer uses a static IP on br0 / macvlan&#xD;
-      (which bypasses Docker DNS), add to its Extra Parameters:&#xD;
-      --add-host=localstack:&lt;LocalStack-IP&gt;.&#xD;
+    • br0 / macvlan / VLAN / STATIC-IP install (each container has&#xD;
+      its own fixed IP on br0.&lt;vlan&gt;, which bypasses Docker DNS):&#xD;
+      install this container on the SAME VLAN as&#xD;
+      StandardNotesServer and assign it a FIXED IP (e.g.&#xD;
+      192.168.x.x). Then, in StandardNotesServer's Extra&#xD;
+      Parameters, APPEND:&#xD;
+        --add-host=localstack:&lt;LocalStack-IP&gt;&#xD;
+      (substitute the IP you assigned above). Restart&#xD;
+      StandardNotesServer for the change to take effect. Without&#xD;
+      this mapping, getent hosts localstack from StandardNotesServer&#xD;
+      will return empty and files-worker.log will fill with&#xD;
+      &quot;getaddrinfo ENOTFOUND localstack&quot;.&#xD;
     Verify from the Unraid host:&#xD;
       docker exec StandardNotesServer getent hosts localstack&#xD;
     Output must be non-empty before connecting any client.&#xD;
@@ -71,7 +81,7 @@
 
   <Config Name="External Hostname (HOSTNAME_EXTERNAL)"
           Target="HOSTNAME_EXTERNAL" Default="localstack" Mode=""
-          Description="Hostname LocalStack advertises to other containers. Leave at 'localstack' — the upstream standardnotes/server image hard-codes the hostname 'localstack' for SNS / SQS. To make the name actually resolve from StandardNotesServer, place both containers on the same user-defined Docker network with this container aliased as 'localstack', OR add --add-host=localstack:&lt;LocalStack-IP&gt; to StandardNotesServer's Extra Parameters when running on br0 / macvlan. Verify with: docker exec StandardNotesServer getent hosts localstack (must return a non-empty line)."
+          Description="Hostname LocalStack advertises to other containers. Leave at 'localstack' — the upstream standardnotes/server image hard-codes the hostname 'localstack' for SNS / SQS. To make the name actually resolve from StandardNotesServer, EITHER place both containers on the same user-defined Docker network with this container aliased as 'localstack', OR — on br0 / macvlan / VLAN / static-IP installs — install this container on the same VLAN with a fixed IP and APPEND `--add-host=localstack:&lt;LocalStack-IP&gt;` to StandardNotesServer's Extra Parameters. Verify with: docker exec StandardNotesServer getent hosts localstack (must return a non-empty line)."
           Type="Variable" Display="always" Required="true" Mask="false">localstack</Config>
 
   <Config Name="Log Level (LS_LOG)" Target="LS_LOG" Default="warn" Mode=""
