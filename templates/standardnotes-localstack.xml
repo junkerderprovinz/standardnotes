@@ -14,17 +14,40 @@
     backend on Unraid. Provides the SNS / SQS endpoints that the upstream&#xD;
     standardnotes/server image expects to find at &quot;localstack:4566&quot;.&#xD;
     &#xD;
-    This template is OPTIONAL but recommended — it mirrors the official&#xD;
-    Standard Notes docker-compose.example.yml. Skip it only if you have&#xD;
-    explicit alternative SNS/SQS endpoints configured.&#xD;
+    REQUIRED companion for the official Standard Notes server image —&#xD;
+    it mirrors the upstream docker-compose.example.yml. Without it,&#xD;
+    StandardNotesServer's worker logs&#xD;
+    (/var/lib/server/logs/files-worker.log) repeat &quot;SQSError: SQS receive&#xD;
+    message failed: getaddrinfo ENOTFOUND localstack&quot; and background jobs&#xD;
+    fail in a loop, destabilising sync. Skip this template ONLY if you&#xD;
+    have explicit alternative SNS / SQS endpoints configured upstream.&#xD;
+    &#xD;
+    HOSTNAME RESOLUTION — THE SERVER MUST RESOLVE &quot;localstack&quot;:&#xD;
+    The official standardnotes/server image resolves the literal&#xD;
+    hostname &quot;localstack&quot; (port 4566). The container name in this&#xD;
+    template is &quot;StandardNotes-LocalStack&quot; for clarity in the Unraid&#xD;
+    UI, but the StandardNotesServer container MUST still be able to&#xD;
+    resolve the bare name &quot;localstack&quot;. Two working setups:&#xD;
+    • Put StandardNotesServer and this container on the SAME&#xD;
+      user-defined Docker network and give this container the network&#xD;
+      alias &quot;localstack&quot; (Unraid: Advanced → Network alias). Docker's&#xD;
+      embedded DNS (127.0.0.11) will then resolve the name.&#xD;
+    • Or, if StandardNotesServer uses a static IP on br0 / macvlan&#xD;
+      (which bypasses Docker DNS), add to its Extra Parameters:&#xD;
+      --add-host=localstack:&lt;LocalStack-IP&gt;.&#xD;
+    Verify from the Unraid host:&#xD;
+      docker exec StandardNotesServer getent hosts localstack&#xD;
+    Output must be non-empty before connecting any client.&#xD;
     &#xD;
     Notes:&#xD;
     • Restricted to SERVICES=sns,sqs to keep the footprint small.&#xD;
     • Port 4566 is exposed on the bridge network so the server container&#xD;
       can reach it; you do NOT need to publish it to the host.&#xD;
-    • For the server container to resolve it as &quot;localstack&quot;, use&#xD;
-      Unraid's container-name DNS (default on the bridge network) or set&#xD;
-      a custom name matching the hostname your server expects.&#xD;
+    • The container is started with --hostname=localstack so its own&#xD;
+      kernel hostname matches the name upstream code expects. That&#xD;
+      alone is not enough for cross-container resolution — see the&#xD;
+      HOSTNAME RESOLUTION block above for what DNS / extra-hosts has&#xD;
+      to be in place on the StandardNotesServer side.&#xD;
   </Overview>
   <Category>Productivity: Cloud:</Category>
   <WebUI/>
@@ -48,7 +71,7 @@
 
   <Config Name="External Hostname (HOSTNAME_EXTERNAL)"
           Target="HOSTNAME_EXTERNAL" Default="localstack" Mode=""
-          Description="Hostname under which other containers reach LocalStack. Must match the hostname used in the Standard Notes server (default: 'localstack')."
+          Description="Hostname LocalStack advertises to other containers. Leave at 'localstack' — the upstream standardnotes/server image hard-codes the hostname 'localstack' for SNS / SQS. To make the name actually resolve from StandardNotesServer, place both containers on the same user-defined Docker network with this container aliased as 'localstack', OR add --add-host=localstack:&lt;LocalStack-IP&gt; to StandardNotesServer's Extra Parameters when running on br0 / macvlan. Verify with: docker exec StandardNotesServer getent hosts localstack (must return a non-empty line)."
           Type="Variable" Display="always" Required="true" Mask="false">localstack</Config>
 
   <Config Name="Log Level (LS_LOG)" Target="LS_LOG" Default="warn" Mode=""

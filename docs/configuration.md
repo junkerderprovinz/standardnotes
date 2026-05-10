@@ -44,6 +44,46 @@ A vanilla `redis:7-alpine` container with no auth is sufficient.
 > VLAN / private bridge and firewall it off the public internet. Only
 > add an auth env var if your specific image fork documents it.
 
+## LocalStack (SNS / SQS)
+
+LocalStack is the **required companion for the official Standard
+Notes server image**. The worker process inside `standardnotes/server`
+resolves the literal hostname `localstack` (default port `4566`) for
+SNS / SQS. If that name does not resolve, the worker repeats
+`SQSError: SQS receive message failed: getaddrinfo ENOTFOUND
+localstack` in `/var/lib/server/logs/files-worker.log` and background
+jobs fail in a loop, destabilising sync.
+
+A files-only deployment can in theory skip the queue path, but the
+upstream image still resolves `localstack` on startup. Even there,
+worker logs must not show `ENOTFOUND localstack`.
+
+The companion template `templates/standardnotes-localstack.xml` runs
+`localstack/localstack:3.0` with `SERVICES=sns,sqs` and
+`HOSTNAME_EXTERNAL=localstack`. The container name in the template is
+`StandardNotes-LocalStack` for UI clarity; the server container must
+resolve the bare name `localstack`. Working setups:
+
+- **Same user-defined Docker network + alias `localstack`** (preferred).
+  Docker's embedded DNS (`127.0.0.11`) resolves the alias.
+- **Static IP / `br0` / macvlan**: Docker DNS is bypassed. Add
+  `--add-host=localstack:<LocalStack-IP>` to `StandardNotesServer`'s
+  *Extra Parameters*.
+
+Verify resolution from the server container:
+
+```bash
+docker exec StandardNotesServer getent hosts localstack
+docker exec StandardNotesServer node -e "const net=require('net'); \
+  const s=net.connect(4566,'localstack'); s.setTimeout(5000); \
+  s.on('connect',()=>{console.log('LocalStack TCP connected'); s.end(); process.exit(0)}); \
+  s.on('timeout',()=>{console.error('LocalStack TCP timeout'); process.exit(1)}); \
+  s.on('error',e=>{console.error(e.message); process.exit(1)});"
+```
+
+The first line must print a non-empty result; the second must print
+`LocalStack TCP connected`.
+
 ## Secrets
 
 All three are required and must be set to a 32-byte hex string. Generate

@@ -23,8 +23,13 @@
       1. MariaDB container (e.g. MariaDB-Official from CA), empty database&#xD;
          "standard_notes_db" with user "std_notes_user".&#xD;
       2. Redis container (Redis-Official from CA, default port 6379).&#xD;
-      3. (Optional) The companion StandardNotes-LocalStack template,&#xD;
-         which provides the SNS/SQS endpoints expected by the upstream image.&#xD;
+      3. The companion StandardNotes-LocalStack template — REQUIRED&#xD;
+         companion for the official Standard Notes server image. The&#xD;
+         worker resolves the hostname "localstack" for SNS / SQS; if it&#xD;
+         is missing or unresolvable, /var/lib/server/logs/files-worker.log&#xD;
+         fills with "SQSError: SQS receive message failed: getaddrinfo&#xD;
+         ENOTFOUND localstack" and background jobs stall, which&#xD;
+         destabilises sync.&#xD;
       4. This template – Standard Notes server.&#xD;
     &#xD;
     Pre-flight: generate THREE 32-byte hex secrets and paste them into the&#xD;
@@ -66,11 +71,25 @@
       Do not publish port 3000 to the public internet directly.&#xD;
     &#xD;
     SYNC-LOOP / DUPLICATE-NOTES WARNING:&#xD;
-    Misconfiguration of Redis, COOKIE_DOMAIN, the reverse proxy, or the&#xD;
-    image tag can trigger massive note duplication. ALWAYS test with a&#xD;
-    fresh throwaway account and one client only before migrating real&#xD;
-    notes. See the README "Sync-Loop / Duplicate Notes Guardrails" and&#xD;
-    docs/sync-loop-troubleshooting.md.&#xD;
+    Misconfiguration of Redis, LocalStack, COOKIE_DOMAIN, the reverse&#xD;
+    proxy, or the image tag can trigger massive note duplication.&#xD;
+    ALWAYS test with a fresh throwaway account and one client only&#xD;
+    before migrating real notes. See the README "Sync-Loop / Duplicate&#xD;
+    Notes Guardrails" and docs/sync-loop-troubleshooting.md.&#xD;
+    &#xD;
+    LOCALSTACK / ENOTFOUND localstack WARNING:&#xD;
+    If /var/lib/server/logs/files-worker.log shows "getaddrinfo&#xD;
+    ENOTFOUND localstack" (e.g. "SQSError: SQS receive message failed:&#xD;
+    getaddrinfo ENOTFOUND localstack"), install / start the&#xD;
+    StandardNotes-LocalStack companion and ensure the hostname&#xD;
+    "localstack" resolves from this container BEFORE testing notes.&#xD;
+    Quick check from the Unraid host:&#xD;
+      docker exec StandardNotesServer getent hosts localstack&#xD;
+    Must print a non-empty line. If empty, the StandardNotesServer&#xD;
+    container is not on the same user-defined Docker network as the&#xD;
+    LocalStack container — put both on a shared user-defined Docker&#xD;
+    network with the alias "localstack", or add&#xD;
+    --add-host=localstack:&lt;LocalStack-IP&gt; to Extra Parameters.&#xD;
     &#xD;
     Image tag (Repository field above): defaults to&#xD;
     standardnotes/server:latest. To pin a known-good release, change&#xD;
@@ -88,7 +107,7 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>A separately running MariaDB container and a Redis container reachable from this container's network. See the project README for details.</Requires>
+  <Requires>A separately running MariaDB container, a Redis container, and the StandardNotes-LocalStack companion (required companion for the official Standard Notes server image — the worker resolves hostname "localstack" for SNS / SQS; if logs show "getaddrinfo ENOTFOUND localstack", install / start LocalStack and ensure the hostname resolves before testing notes). See the project README for details.</Requires>
 
   <!-- ========================================================
        PORTS

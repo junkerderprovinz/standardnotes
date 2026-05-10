@@ -69,8 +69,19 @@ every additional client write makes the situation worse.
   duplicates the conflicting copy on the client side. With several
   clients online and an unstable backend, the cascade can run away.
 - **Redis unreachable or wrong host/port.** If `REDIS_HOST` /
-  `REDIS_PORT` are wrong, the server logs `ECONNREFUSED` and sync
-  state is not deduplicated correctly across requests.
+  `REDIS_PORT` are wrong, the server logs `ECONNREFUSED` (or the
+  connection times out) and sync state is not deduplicated correctly
+  across requests. A *timeout* (not refusal) usually means a firewall
+  / VLAN / `br0` routing problem rather than a wrong port.
+- **LocalStack missing or unresolvable.** The official
+  `standardnotes/server` image expects to resolve the hostname
+  `localstack` (default port `4566`) for SNS / SQS. If the worker
+  cannot resolve it, `/var/lib/server/logs/files-worker.log` fills
+  with `SQSError: SQS receive message failed: getaddrinfo ENOTFOUND
+  localstack` and background jobs fail in a loop. This destabilises
+  the worker pipeline and is a known precursor to sync / duplication
+  problems — LocalStack is **not** optional in practice, see
+  [§ 2](#2-architecture).
 - **Bad `COOKIE_DOMAIN` / session-cookie handling behind a reverse
   proxy.** Symptoms include `No cookies provided for cookie-based
   session token` in the server log and a `/v1/items` request loop.
@@ -119,18 +130,75 @@ duplicates.
    close) on web UI, desktop, mobile. Background sync keeps fanning the
    loop out otherwise.
 2. **Stop the StandardNotesServer container.** Unraid → Docker → stop.
-   Leave MariaDB and Redis running so you can inspect state.
+   Leave MariaDB, Redis and LocalStack running so you can inspect
+   state.
 3. **Do NOT reconnect any existing client.** Especially not your
    long-history account. Each new edit during a loop can spawn more
    duplicates.
-4. **Check Redis.** From inside the container shell:
-   `nc -zv <redis-ip> 6379`. Tail the server log for `ECONNREFUSED`
-   against your Redis host.
-5. **Check `COOKIE_DOMAIN`.** Verify it is a **bare domain** —
+4. **Verify Redis is reachable from Docker / StandardNotesServer.**
+   Quick TCP test from a throwaway container on the Docker host:
+
+    ```bash
+    docker run --rm redis:7-alpine \
+      redis-cli -h 192.168.x.x -p 6379 ping
+    ```
+
+    Expected reply: `PONG`. A timeout (`Could not connect to Redis at
+    192.168.x.x:6379: Operation timed out`) means a firewall / VLAN /
+    `br0` routing problem between the Docker network and the Redis
+    host — fix it before anything else. From inside the running server
+    container (when it is up):
+
+    ```bash
+    docker exec StandardNotesServer node -e "const net=require('net'); \
+      const s=net.connect(6379,'192.168.x.x'); s.setTimeout(5000); \
+      s.on('connect',()=>{console.log('Redis TCP connected'); s.end(); process.exit(0)}); \
+      s.on('timeout',()=>{console.error('Redis TCP timeout'); process.exit(1)}); \
+      s.on('error',e=>{console.error(e.message); process.exit(1)});"
+    ```
+
+    Replace `192.168.x.x` with your Redis container IP. Tail the
+    server log for `ECONNREFUSED` / connection-timeout lines against
+    that host.
+5. **Verify LocalStack is running and resolvable as `localstack`.**
+   The worker resolves the literal hostname `localstack` for SNS /
+   SQS, so DNS *and* TCP both have to work:
+
+    ```bash
+    docker exec StandardNotesServer getent hosts localstack
+    docker exec StandardNotesServer node -e "const net=require('net'); \
+      const s=net.connect(4566,'localstack'); s.setTimeout(5000); \
+      s.on('connect',()=>{console.log('LocalStack TCP connected'); s.end(); process.exit(0)}); \
+      s.on('timeout',()=>{console.error('LocalStack TCP timeout'); process.exit(1)}); \
+      s.on('error',e=>{console.error(e.message); process.exit(1)});"
+    ```
+
+    The first command must print a non-empty line. If it is empty,
+    Docker DNS cannot resolve `localstack` from the server container —
+    see the static-IP / `br0` / macvlan note below. Tail
+    `/var/lib/server/logs/files-worker.log` for `SQSError: SQS receive
+    message failed: getaddrinfo ENOTFOUND localstack`; if you see it,
+    fix LocalStack reachability *before* reconnecting any client.
+
+    > 📌 **Static IP / `br0` / macvlan.** Docker's built-in DNS
+    > (`127.0.0.11`) only resolves container names when both
+    > containers share a **user-defined Docker network**. Containers
+    > assigned a static IP on `br0` / macvlan bypass that DNS server
+    > and will *not* resolve `localstack`. Two working options:
+    >
+    > - Put StandardNotesServer and StandardNotes-LocalStack on the
+    >   **same user-defined Docker network** (e.g. a custom bridge),
+    >   and either name the LocalStack container `localstack` or give
+    >   it a network alias `localstack`.
+    > - Or, keep `br0` / macvlan and add an **extra host mapping** so
+    >   the literal name resolves — Unraid template → *Extra Parameters*
+    >   → `--add-host=localstack:<LocalStack-IP>`. `getent hosts
+    >   localstack` must then return that IP.
+6. **Check `COOKIE_DOMAIN`.** Verify it is a **bare domain** —
    `standardnotesserver.mydomain.tld`, not `https://...`, not a URL,
    no trailing slash. Verify the Custom Sync Server URL in the client
    is the **full HTTPS URL** `https://standardnotesserver.mydomain.tld`.
-6. **If the test/throwaway account is the one that duplicated:**
+7. **If the test/throwaway account is the one that duplicated:**
    delete it (or drop and recreate the database / wipe the test
    account) before bringing the server back up. Carrying a
    already-corrupted account into a "fixed" deployment will reproduce
@@ -185,7 +253,9 @@ Full step-by-step checklist:
 
 This repository ships **Unraid Community Application templates** for the
 [official `standardnotes/server` Docker image](https://hub.docker.com/r/standardnotes/server),
-plus an optional **LocalStack** companion template that mirrors the
+plus a **LocalStack** companion template (required companion for the
+official Standard Notes server image — see [§ 2](#2-architecture)) that
+mirrors the
 [upstream `docker-compose.example.yml`](https://github.com/standardnotes/server/blob/main/docker-compose.example.yml).
 
 What it deliberately does **not** do:
@@ -206,8 +276,9 @@ What it deliberately does **not** do:
 What it does do:
 
 - **One Unraid template per concern** — `StandardNotesServer` and
-  (optionally) `StandardNotes-LocalStack`. The browser client lives in
-  the companion repo as its own `StandardNotes` template.
+  the required companion `StandardNotes-LocalStack` (SNS / SQS). The
+  browser client lives in the companion repo as its own
+  `StandardNotes` template.
 - **Sane defaults** taken from the upstream
   [`.env.sample`](https://github.com/standardnotes/server/blob/main/.env.sample).
 - **Every secret marked `Mask="true"`** in the template, so the Unraid UI
@@ -221,7 +292,7 @@ What it does do:
 |---|:---:|:---:|
 | Standard Notes server image | ✅ official `standardnotes/server` | ✅ |
 | MariaDB / Redis bundled | ❌ (reuse your existing MariaDB / Redis) | ✅ |
-| LocalStack as a separate container | ✅ | ⚠️ embedded |
+| LocalStack as a separate, required companion | ✅ | ⚠️ embedded |
 | Secrets masked in UI | ✅ | ⚠️ |
 | Reverse-proxy guidance | ✅ | ⚠️ |
 | Volumes match upstream paths 1:1 | ✅ | ⚠️ |
@@ -229,7 +300,7 @@ What it does do:
 ### Scope: backend only, no paid-feature unlocks, no AiO image
 
 This template ships **only the official Standard Notes backend**
-(`standardnotes/server`) plus the optional LocalStack companion. A few
+(`standardnotes/server`) plus the required LocalStack companion. A few
 points users frequently ask about:
 
 - **Paid Standard Notes features are not unlocked by self-hosting.**
@@ -284,8 +355,15 @@ The Standard Notes server image talks to:
 
 - **MariaDB** — schema migrations run automatically on first start.
 - **Redis** — cache, queues, rate limits.
-- **LocalStack** — provides SNS / SQS endpoints expected by the upstream
-  image, even on a single-node self-hosted setup.
+- **LocalStack** — **required companion** for the official
+  `standardnotes/server` image. Provides the SNS / SQS endpoints the
+  worker process expects to reach at `localstack:4566` on every
+  self-hosted setup. Without it, `files-worker.log` fills with
+  `SQSError: SQS receive message failed: getaddrinfo ENOTFOUND
+  localstack` and background jobs stall — destabilising sync and
+  contributing to duplication. Earlier passes called LocalStack
+  *optional*; live installs show it is required for a stable full
+  install.
 
 ---
 
@@ -299,6 +377,9 @@ You will need:
 - A **MariaDB** container reachable from the Unraid host — see
   [§ 5](#5-database--cache).
 - A **Redis** container reachable from the Unraid host — see [§ 5](#5-database--cache).
+- A **LocalStack** container resolvable as the hostname `localstack`
+  from the server container — required companion, see
+  [§ 2](#2-architecture).
 - Three 32-byte hex secrets — see [§ 4](#4-generating-secrets).
 - A reverse proxy with HTTPS — see [§ 8](#8-reverse-proxy).
 
@@ -307,7 +388,9 @@ You will need:
 The repository ships two templates:
 
 - `templates/standardnotes-server.xml` — the Standard Notes backend.
-- `templates/standardnotes-localstack.xml` — optional SNS/SQS provider.
+- `templates/standardnotes-localstack.xml` — required companion SNS /
+  SQS provider (must be reachable at `localstack:4566` from the
+  server container — see [§ 2](#2-architecture)).
 
 Pull the templates into Unraid's user-template folder via the Unraid
 console / SSH:
@@ -327,11 +410,32 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-StandardNotes-Loc
 > there appear under **Docker → Add Container → Template → User
 > templates** without restarting Docker.
 
-### Step 2 — Start LocalStack (optional but recommended)
+### Step 2 — Start LocalStack (required companion)
 
 In the Unraid Web UI: **Docker** → **Add Container** → in the
 **Template** dropdown, pick **StandardNotes-LocalStack** under
 *User templates*. Hit **Apply**. No further configuration needed.
+
+> ⚠️ **LocalStack is required for a stable full install** of the
+> official `standardnotes/server` image. The worker process resolves
+> the hostname `localstack` for SNS / SQS; if that name does not
+> resolve, `files-worker.log` repeats `getaddrinfo ENOTFOUND
+> localstack` and background jobs fail in a loop. After starting
+> LocalStack, confirm the server container can resolve and reach it:
+>
+> ```bash
+> docker exec StandardNotesServer getent hosts localstack
+> docker exec StandardNotesServer node -e "const net=require('net'); \
+>   const s=net.connect(4566,'localstack'); s.setTimeout(5000); \
+>   s.on('connect',()=>{console.log('LocalStack TCP connected'); s.end(); process.exit(0)}); \
+>   s.on('timeout',()=>{console.error('LocalStack TCP timeout'); process.exit(1)}); \
+>   s.on('error',e=>{console.error(e.message); process.exit(1)});"
+> ```
+>
+> Both must succeed before connecting any client. See
+> [§ 11](#11-troubleshooting) and
+> [`docs/sync-loop-troubleshooting.md`](docs/sync-loop-troubleshooting.md)
+> for DNS / `br0` / macvlan fix-ups when the name does not resolve.
 
 ### Step 3 — Start the Standard Notes server
 
@@ -694,11 +798,41 @@ start — watch the log for errors.
 </details>
 
 <details>
-<summary><b>SNS / SQS errors in the log</b></summary>
+<summary><b>SNS / SQS errors in the log (<code>getaddrinfo ENOTFOUND localstack</code>)</b></summary>
 
-- The LocalStack companion container isn't running, or the server can't
-  reach it as `localstack:4566`. Either start the LocalStack template or
-  configure alternative SNS/SQS endpoints in the upstream env vars.
+- `getaddrinfo ENOTFOUND localstack` in
+  `/var/lib/server/logs/files-worker.log` means the worker cannot
+  resolve the hostname `localstack`. LocalStack is the **required
+  companion** for the official `standardnotes/server` image — install
+  / start it, and ensure DNS resolves before testing notes. Worker
+  logs must not show `ENOTFOUND localstack` on a stable install.
+- Resolution test from the server container:
+
+    ```bash
+    docker exec StandardNotesServer getent hosts localstack
+    docker exec StandardNotesServer node -e "const net=require('net'); \
+      const s=net.connect(4566,'localstack'); s.setTimeout(5000); \
+      s.on('connect',()=>{console.log('LocalStack TCP connected'); s.end(); process.exit(0)}); \
+      s.on('timeout',()=>{console.error('LocalStack TCP timeout'); process.exit(1)}); \
+      s.on('error',e=>{console.error(e.message); process.exit(1)});"
+    ```
+
+  The first line must print a non-empty result; the second must
+  print `LocalStack TCP connected`.
+- If `getent` returns empty: containers are not on a shared
+  user-defined Docker network. Either put StandardNotesServer and
+  StandardNotes-LocalStack on the **same user-defined Docker
+  network** and give LocalStack the network alias `localstack`, or
+  add `--add-host=localstack:<LocalStack-IP>` to the server
+  template's *Extra Parameters*.
+- If you have a deliberate alternative SNS / SQS provider, configure
+  the matching upstream env vars instead — but for a default
+  community-template install, LocalStack is the supported path.
+
+> A files-only deployment (no notes sync — just attachments) can in
+> theory skip the queue path, but the upstream image still resolves
+> the LocalStack hostname on startup. Even there, worker logs **must
+> not** show `ENOTFOUND localstack`.
 </details>
 
 <details>
@@ -708,10 +842,26 @@ start — watch the log for errors.
   keep editing. See [§ 0](#0-sync-loop--duplicate-notes-guardrails).
 - Check the server log for `No cookies provided for cookie-based
   session token`, `ECONNREFUSED`, repeated `/v1/items` 401/500 calls,
-  or `duplicate_of` cascades.
+  `duplicate_of` cascades, or — in
+  `/var/lib/server/logs/files-worker.log` — `SQSError: SQS receive
+  message failed: getaddrinfo ENOTFOUND localstack`.
 - Verify `REDIS_HOST` / `REDIS_PORT` point at the right **IP** and
-  that the Redis container is actually reachable from the
-  StandardNotesServer container (`nc -zv <ip> 6379`).
+  that the Redis container is actually reachable from the Docker
+  network and from the StandardNotesServer container:
+
+    ```bash
+    docker run --rm redis:7-alpine \
+      redis-cli -h 192.168.x.x -p 6379 ping
+    docker exec StandardNotesServer node -e "const net=require('net'); \
+      const s=net.connect(6379,'192.168.x.x'); s.setTimeout(5000); \
+      s.on('connect',()=>{console.log('Redis TCP connected'); s.end(); process.exit(0)}); \
+      s.on('timeout',()=>{console.error('Redis TCP timeout'); process.exit(1)}); \
+      s.on('error',e=>{console.error(e.message); process.exit(1)});"
+    ```
+- Verify LocalStack is running and the hostname `localstack`
+  resolves from the server container (`docker exec StandardNotesServer
+  getent hosts localstack`) — worker logs must not show `ENOTFOUND
+  localstack`.
 - Verify `COOKIE_DOMAIN` matches your public sync host and that the
   reverse proxy serves the API over **HTTPS**.
 - Roll back to a known-good `standardnotes/server` tag if you recently

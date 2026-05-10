@@ -5,7 +5,218 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
-## Latest pass — explicit `https://` placement, files port 3125 vs 3104
+## Latest pass — LocalStack required, Redis/LocalStack reachability
+
+User reported live-install debug findings:
+
+- Redis test from a throwaway Docker container timed out: `Could not
+  connect to Redis at 192.168.20.72:6379: Operation timed out`.
+- Server worker logs show repeated `SQSError: SQS receive message
+  failed: getaddrinfo ENOTFOUND localstack` in
+  `/var/lib/server/logs/files-worker.log`.
+- Missing / unresolvable LocalStack plausibly destabilises the worker
+  pipeline and contributes to sync / duplication issues.
+
+This pass reclassifies LocalStack from *optional* to *required
+companion for the official Standard Notes server image* across all
+user-facing surfaces, and adds first-class Redis / LocalStack
+reachability checks (with the exact `redis-cli` and `node -e` TCP /
+DNS commands) to the emergency duplicate-loop checklist.
+
+### What changed in this pass
+
+- **`README.md`**:
+  - § 0 *Common causes* list: Redis bullet rewritten to mention
+    `ECONNREFUSED` *and* connection timeouts (firewall / VLAN /
+    `br0`); new LocalStack bullet describing the `ENOTFOUND
+    localstack` failure mode and pointing to § 2.
+  - § 0 *Emergency checklist*: expanded from 6 to 7 steps. Step 2
+    now leaves LocalStack running alongside MariaDB / Redis. New
+    step 4 = explicit Redis reachability checks (`docker run --rm
+    redis:7-alpine redis-cli -h ... ping`, in-container `node -e`
+    TCP probe). New step 5 = explicit LocalStack reachability
+    checks (`getent hosts localstack`, in-container `node -e` TCP
+    probe to `localstack:4566`), plus a *Static IP / `br0` /
+    macvlan* note covering the two working fixes (user-defined
+    Docker network + alias, or `--add-host=localstack:<IP>`).
+  - § 1 *What is this?*: "optional **LocalStack** companion" →
+    "**LocalStack** companion template (required companion for the
+    official Standard Notes server image)". Per-concern bullet and
+    comparison table updated to match. "Scope: backend only"
+    bullet "plus the optional LocalStack companion" → "plus the
+    required LocalStack companion".
+  - § 2 *Architecture* bullet for LocalStack: marked as **required
+    companion** with the `getaddrinfo ENOTFOUND localstack` failure
+    mode spelled out.
+  - § 3 *Pre-flight*: new bullet — LocalStack container resolvable
+    as `localstack`. § 3 templates list: LocalStack template
+    described as "required companion SNS / SQS provider".
+  - § 3 *Step 2* heading: "(optional but recommended)" → "(required
+    companion)". Added a callout box with the exact `getent hosts
+    localstack` + `node -e` TCP probe commands and a pointer to
+    § 11 / `docs/sync-loop-troubleshooting.md` for DNS fix-ups.
+  - § 11 *SNS / SQS errors in the log* `<details>` block rewritten:
+    title now includes the exact `getaddrinfo ENOTFOUND localstack`
+    string; body explains LocalStack is required, includes the
+    `getent hosts localstack` + `node -e` probe, and the
+    user-defined-network-alias / `--add-host` fix recipe. Files-only
+    nuance retained.
+  - § 11 *Notes are being duplicated* `<details>` block: log-grep
+    list extended with the `ENOTFOUND localstack` line; verification
+    block now includes the `redis-cli` and `node -e` TCP probes for
+    Redis *and* the `getent hosts localstack` probe.
+
+- **`templates/standardnotes-server.xml`**:
+  - `<Overview>` *Required, in this order* list: item 3 (LocalStack)
+    is no longer marked *Optional* — it is described as the required
+    companion, with the `ENOTFOUND localstack` failure mode named.
+  - `<Overview>` new "LOCALSTACK / ENOTFOUND localstack WARNING"
+    block: tells users to install / start LocalStack and verify
+    `docker exec StandardNotesServer getent hosts localstack`
+    returns a non-empty line *before* testing notes. Includes both
+    fix recipes (user-defined Docker network + alias, or
+    `--add-host`).
+  - `<Overview>` sync-loop warning extended to list LocalStack
+    alongside Redis / `COOKIE_DOMAIN` / proxy / image tag.
+  - `<Requires>` updated to call out the LocalStack companion and
+    the `ENOTFOUND localstack` symptom directly.
+
+- **`templates/standardnotes-localstack.xml`**:
+  - Container name kept as `StandardNotes-LocalStack` to avoid
+    disrupting users mid-setup; instead the `<Overview>` is rewritten
+    to make the hostname-resolution requirement very explicit.
+  - New "REQUIRED companion" paragraph naming the `ENOTFOUND
+    localstack` failure mode in `files-worker.log`.
+  - New "HOSTNAME RESOLUTION — THE SERVER MUST RESOLVE `localstack`"
+    block spelling out the two working setups (user-defined Docker
+    network + alias `localstack`, or `--add-host=localstack:<IP>`)
+    and the `docker exec StandardNotesServer getent hosts
+    localstack` verification step.
+  - `HOSTNAME_EXTERNAL` description: clarifies that
+    `HOSTNAME_EXTERNAL=localstack` alone is **not** what makes the
+    server resolve the name — the resolution has to be wired up via
+    a shared user-defined network alias *or* `--add-host`. No new
+    env vars invented.
+  - `--hostname=localstack` in `<ExtraParams>` retained from the
+    earlier pass.
+
+- **`docs/configuration.md`**:
+  - New top-level section **LocalStack (SNS / SQS)** between
+    *Cache* and *Secrets*. Calls LocalStack the "required companion
+    for the official Standard Notes server image". Describes the
+    `ENOTFOUND localstack` failure mode, the two resolution fixes
+    (user-defined network + alias, or `--add-host`), and the exact
+    `getent hosts localstack` + `node -e` TCP-probe verification
+    commands.
+
+- **`docs/sync-loop-troubleshooting.md`**:
+  - Emergency checklist: expanded from 6 to 7 steps to mirror the
+    README. Step 2 leaves LocalStack running alongside MariaDB /
+    Redis. New step 4 = Redis reachability with `docker run --rm
+    redis:7-alpine ... ping` and the in-container `node -e` TCP
+    probe. New step 5 = LocalStack reachability with `getent hosts
+    localstack` and the in-container `node -e` probe to
+    `localstack:4566`, plus the static-IP / `br0` / macvlan
+    network-alias / `--add-host` recipe.
+  - § 2 *Redis reachability*: expanded with the
+    `docker run --rm redis:7-alpine redis-cli ... ping` throwaway
+    test (works while the server is stopped) and the
+    `docker exec StandardNotesServer node -e ...` in-container TCP
+    probe. The existing `nc` snippet is retained as a fallback.
+    Failure-mode paragraph now distinguishes refusal vs timeout.
+  - New § 2a **LocalStack (SNS / SQS) reachability**: full
+    checklist with the `getent hosts localstack` + `node -e`
+    probes, the two working fixes (user-defined network alias vs
+    `--add-host`), a `tail -n 200 .../files-worker.log` cleanup
+    check, and the expected failure mode.
+  - § 6 *Logs to grep for* table: added rows for Redis connection
+    timeouts (`Operation timed out`) and for `SQSError: SQS receive
+    message failed: getaddrinfo ENOTFOUND localstack` in
+    `files-worker.log`.
+
+### Decisions kept from earlier passes
+
+- Container name `StandardNotesServer` (server XML).
+- Container name `StandardNotes-LocalStack` retained — changing it
+  to a bare `localstack` would disrupt existing users; instead the
+  hostname-resolution requirement is documented explicitly.
+- `--hostname=localstack` in `<ExtraParams>` of the LocalStack XML
+  (sets the kernel hostname; resolution from the server container
+  still requires shared network + alias or `--add-host`).
+- MariaDB-only wording everywhere user-facing.
+- All previous `https://` placement, files-port `3125:3104`, and
+  generic-domain decisions.
+- No unsupported env vars invented on the LocalStack template; the
+  fix recipes use Docker-native network aliases or `--add-host`.
+
+### Validation (this pass)
+
+```
+$ python3 -c "import xml.etree.ElementTree as ET
+> for f in ['templates/standardnotes-server.xml',
+>           'templates/standardnotes-localstack.xml',
+>           '.github/assets/banner.svg',
+>           '.github/assets/icon.svg']:
+>     ET.parse(f); print('ok', f)"
+ok templates/standardnotes-server.xml
+ok templates/standardnotes-localstack.xml
+ok .github/assets/banner.svg
+ok .github/assets/icon.svg
+
+$ python3 -c "import yaml,glob; \
+    [yaml.safe_load(open(p)) for p in glob.glob('.github/workflows/*.yml')]"
+(no output — all workflow YAMLs parse cleanly)
+
+$ grep -nE "ENOTFOUND localstack" README.md docs/*.md templates/*.xml
+README.md: present in § 0, § 2, § 11 SNS/SQS block, § 11 duplicate block
+docs/configuration.md: present in LocalStack section
+docs/sync-loop-troubleshooting.md: present in emergency checklist,
+  § 2a, § 6 logs table
+templates/standardnotes-server.xml: present in <Overview> warning and
+  <Requires>
+templates/standardnotes-localstack.xml: present in <Overview>
+```
+
+### Files changed in this pass
+
+```
+standardnotes-unraid/
+├── README.md                                # § 0 causes + emergency
+│                                            # checklist (Redis +
+│                                            # LocalStack probes), § 1
+│                                            # "required companion"
+│                                            # wording, § 2 LocalStack
+│                                            # required, § 3 pre-flight
+│                                            # + Step 2 callout, § 11
+│                                            # SNS/SQS block rewrite,
+│                                            # duplicate-notes block
+│                                            # extended
+├── HANDOFF.md                               # this entry
+├── docs/
+│   ├── configuration.md                     # new LocalStack section
+│   └── sync-loop-troubleshooting.md         # emergency checklist
+│                                            # expanded, § 2 Redis
+│                                            # probes added, new § 2a
+│                                            # LocalStack section,
+│                                            # § 6 logs table extended
+└── templates/
+    ├── standardnotes-server.xml             # <Overview> LocalStack
+    │                                        # warning, <Requires>
+    │                                        # updated
+    └── standardnotes-localstack.xml         # <Overview> required +
+                                             # hostname resolution
+                                             # block, HOSTNAME_EXTERNAL
+                                             # description tightened
+```
+
+### Publishing status
+
+Still **paused**. No `git push`, no remote add, no CA submission. This
+pass is local-only, ready for the user to review.
+
+---
+
+## Earlier pass — explicit `https://` placement, files port 3125 vs 3104
 
 User reported a misconfiguration where `COOKIE_DOMAIN` had been set to a
 full URL (`https://...` and a wrong domain), causing session breakage.
