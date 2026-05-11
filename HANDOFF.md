@@ -5,6 +5,88 @@ been pushed, no remote has been created, and no Community Applications
 submission has been made. Do not push, create a repo, or publish until
 the user explicitly approves.
 
+## Latest pass — PNG icon, concise template descriptions, live-install success note
+
+User reported:
+
+- Unraid does not render SVG container icons. Templates need a PNG.
+- The server template's `<Overview>` and several `<Config Description>`
+  fields contained typographic em dashes and Markdown-style link
+  syntax (`[https://...](https://...)`) that rendered as visible literal
+  characters in the Unraid UI.
+- The LocalStack template's variable descriptions were over-long for
+  the Unraid sidebar.
+- A live install on a `br0.20` VLAN with the server pointed at the
+  user's actual Redis IP, plus the bootstrapped LocalStack reachable as
+  `localstack`, now syncs cleanly. Note duplication stopped.
+
+### What changed in this pass
+
+- **`.github/assets/icon.png`** (new). 256×256 RGBA PNG rasterised from
+  the existing wordmark-free `.github/assets/icon.svg` via ImageMagick
+  (`magick -background none -density 384 icon.svg -resize 256x256
+  PNG32:icon.png`). Transparent canvas, brand-blue (`#1C6EE0`) mark.
+  Byte-identical to the PNG shipped in the companion `standardnotes-webui`
+  repo. SVG retained for source.
+- **`templates/standardnotes-server.xml`**:
+  - `<Icon>` now points at `.github/assets/icon.png` instead of the SVG.
+  - `<Overview>` rewritten end-to-end. All em dashes (`—`) replaced
+    with plain hyphens or removed. All Markdown-style autolinks like
+    `[https://...](https://...)` removed. Prose condensed to short
+    sentences and lists that render cleanly in the Unraid UI. Kept the
+    decision-relevant facts: required side containers, port mapping
+    (`3125` host → `3104` container), URL shapes for `COOKIE_DOMAIN` /
+    `PUBLIC_FILES_SERVER_URL` / Custom Sync Server, hostname
+    `localstack` resolution recipes, and the sync-loop warning.
+  - `<Config>` descriptions (API port, Logs/Uploads, MariaDB block,
+    Redis block, secrets, Public Files Server URL, Files Server Port,
+    Cookie Domain): em dashes replaced with hyphens or commas. Each
+    description trimmed to the essentials; the long commentary moved
+    out of the template into the README where it already lives.
+- **`templates/standardnotes-localstack.xml`**:
+  - `<Icon>` now points at the PNG.
+  - `<Overview>` rewritten in the same style as the server template -
+    short paragraphs, hyphens instead of em dashes, no Markdown link
+    syntax. Kept the hostname-resolution recipes and the bootstrap
+    `curl`/`chmod` + `awslocal` verify commands.
+  - `<Config>` descriptions reduced to user-requested essentials:
+    - `SERVICES`: `Required services. Keep sns,sqs.`
+    - `HOSTNAME_EXTERNAL`: `Keep localstack. Server resolves this name.`
+    - `LS_LOG`: `Log level. Default warn.`
+    - `LocalStack Bootstrap Script`: `Required bootstrap script.
+      Creates Standard Notes SNS topics and SQS queues. See Overview
+      for the curl + chmod host-prep commands.`
+- **`HANDOFF.md`** (this entry). Live-install success: after pointing
+  Redis at the correct VLAN IP and finishing the LocalStack bootstrap
+  + `--add-host=localstack:<LocalStack-IP>` recipe, sync round-trips
+  cleanly and note duplication has stopped. No public README rewrite
+  for the success story since it is operational, not a code change.
+
+### Preserved across this pass
+
+- `COOKIE_DOMAIN` is a bare domain, `PUBLIC_FILES_SERVER_URL` is a
+  full HTTPS URL.
+- Files port mapping host `3125` → container `3104`.
+- MariaDB-only wording (`DB_TYPE=mysql` is the internal driver value).
+- Container names `StandardNotesServer`, `StandardNotes-LocalStack`,
+  `StandardNotes` (in the webui repo).
+- All krusader-style inner-text values on every non-empty
+  `Default=`.
+- All previous README content (sync-loop guardrails, troubleshooting,
+  configuration tables) untouched.
+
+### Validation summary for this pass
+
+- `magick identify` and `file` on `.github/assets/icon.png`: PNG, 256×256,
+  RGBA, non-empty. Both repos' PNGs have identical md5.
+- `python3 -c "import xml.etree.ElementTree as ET; ET.parse(p)"` on both
+  `templates/*.xml` and `.github/assets/icon.svg`: all OK.
+- `python3 -c "import yaml; yaml.safe_load(open(p))"` on
+  `.github/workflows/*.yml`: OK.
+- `grep -nE "—|\[https://" templates/*.xml`: no matches in either
+  template (em dashes and Markdown link syntax fully removed from
+  descriptions).
+
 ## Latest pass — dockerMan inner-text audit + edit-screen "reset" troubleshooting
 
 User reported that on Unraid, opening *Edit* on a freshly installed

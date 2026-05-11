@@ -10,126 +10,74 @@
   <Support>https://github.com/junkerderprovinz/standardnotes-server/issues</Support>
   <Project>https://standardnotes.com</Project>
   <Overview>
-    Standard Notes – self-hosted backend for Unraid (community template).&#xD;
-    End-to-end encrypted notes, sync server, files server, auth and API gateway&#xD;
-    bundled into a single image (standardnotes/server) maintained upstream.&#xD;
+    Standard Notes self-hosted backend for Unraid (community template).&#xD;
+    End-to-end encrypted notes, sync, files, auth and API gateway in the&#xD;
+    official standardnotes/server image.&#xD;
     &#xD;
-    IMPORTANT: This template installs ONLY the Standard Notes server image.&#xD;
-    You must run a MariaDB and a Redis container SEPARATELY before&#xD;
-    starting this container. See the project README for the recommended&#xD;
-    Unraid templates and required DB/Redis settings.&#xD;
+    Required side containers, in this order:&#xD;
+      1. MariaDB. Create an empty database "standard_notes_db" and a&#xD;
+         user "std_notes_user" with all privileges on it.&#xD;
+      2. Redis (default port 6379, no auth).&#xD;
+      3. StandardNotes-LocalStack companion (SNS and SQS). The server&#xD;
+         resolves the hostname "localstack" at port 4566. Without it,&#xD;
+         files-worker.log fills with "getaddrinfo ENOTFOUND localstack"&#xD;
+         and notes can duplicate.&#xD;
+      4. This template.&#xD;
     &#xD;
-    Required, in this order:&#xD;
-      1. MariaDB container (e.g. MariaDB-Official from CA), empty database&#xD;
-         "standard_notes_db" with user "std_notes_user".&#xD;
-      2. Redis container (Redis-Official from CA, default port 6379).&#xD;
-      3. The companion StandardNotes-LocalStack template — REQUIRED&#xD;
-         companion for the official Standard Notes server image. The&#xD;
-         worker resolves the hostname "localstack" for SNS / SQS; if it&#xD;
-         is missing or unresolvable, /var/lib/server/logs/files-worker.log&#xD;
-         fills with "SQSError: SQS receive message failed: getaddrinfo&#xD;
-         ENOTFOUND localstack" and background jobs stall, which&#xD;
-         destabilises sync.&#xD;
-      4. This template – Standard Notes server.&#xD;
+    Generate three 32-byte hex secrets before starting:&#xD;
+      openssl rand -hex 32  (run three times)&#xD;
     &#xD;
-    Pre-flight: generate THREE 32-byte hex secrets and paste them into the&#xD;
-    fields below. On any Linux/Mac shell:&#xD;
-      openssl rand -hex 32      # repeat 3x&#xD;
+    Ports:&#xD;
+      3000/tcp - API gateway (HTTP, put behind a reverse proxy).&#xD;
+      3125/tcp host - 3104 container - files server (per upstream&#xD;
+                     docker-compose). Reverse-proxy traffic must&#xD;
+                     forward to host port 3125.&#xD;
     &#xD;
-    Pre-configured:&#xD;
-    • Server port 3000/tcp (HTTP API gateway, put behind your reverse proxy)&#xD;
-    • Files port: host 3125 -> container 3104 (per upstream&#xD;
-      docker-compose.example.yml). The internal upstream files service&#xD;
-      listens on 3104 inside the container; 3125 is the host/public&#xD;
-      port your reverse proxy must forward to.&#xD;
-    • Persistent volumes for /var/lib/server/logs and the uploads directory&#xD;
-    • DB_TYPE=mysql (internal driver value required for MariaDB —&#xD;
-      Standard Notes / TypeORM uses the "mysql" driver string to talk&#xD;
-      to MariaDB), CACHE_TYPE=redis (per upstream .env.sample)&#xD;
-    &#xD;
-    HTTPS — where it belongs and where it doesn't:&#xD;
-    • COOKIE_DOMAIN: BARE DOMAIN, no https://. Example:&#xD;
-      standardnotesserver.mydomain.tld&#xD;
-    • PUBLIC_FILES_SERVER_URL: FULL HTTPS URL with https://. Example:&#xD;
-      https://files.standardnotesserver.mydomain.tld&#xD;
-    • Custom Sync Server (entered in the Standard Notes client / web app):&#xD;
-      FULL HTTPS URL with https://. Example:&#xD;
-      https://standardnotesserver.mydomain.tld&#xD;
+    URL and cookie shapes:&#xD;
+      COOKIE_DOMAIN: bare domain only, no https://, no trailing slash.&#xD;
+        Example: standardnotesserver.mydomain.tld&#xD;
+      PUBLIC_FILES_SERVER_URL: full HTTPS URL, includes https://.&#xD;
+        Example: https://files.standardnotesserver.mydomain.tld&#xD;
+      Custom Sync Server (entered in the Standard Notes client):&#xD;
+        full HTTPS URL. Example: https://standardnotesserver.mydomain.tld&#xD;
     &#xD;
     Notes:&#xD;
-    • UNOFFICIAL community template. Standard Notes does not provide&#xD;
-      support for self-hosted setups beyond the official Docker docs at&#xD;
-      https://standardnotes.com/help/self-hosting/docker.&#xD;
-    • The web client (standardnotes/web) is shipped as a SEPARATE&#xD;
-      Unraid template in the companion repo&#xD;
-      https://github.com/junkerderprovinz/standardnotes-webui — its&#xD;
-      container is named "StandardNotes". Most users connect with the&#xD;
-      official desktop / mobile apps and just point them at&#xD;
-      https://your-domain/ via reverse proxy; the web container is&#xD;
-      optional.&#xD;
-    • Always expose Standard Notes via HTTPS (NPM, SWAG, Traefik, Caddy).&#xD;
-      Do not publish port 3000 to the public internet directly.&#xD;
+      Unofficial community template. Always reach the server over HTTPS.&#xD;
+      The web client (standardnotes/web) is a separate Unraid template&#xD;
+      in the companion repo standardnotes-webui (container name&#xD;
+      "StandardNotes"). See the project README for details.&#xD;
     &#xD;
-    SYNC-LOOP / DUPLICATE-NOTES WARNING:&#xD;
-    Misconfiguration of Redis, LocalStack, COOKIE_DOMAIN, the reverse&#xD;
-    proxy, or the image tag can trigger massive note duplication.&#xD;
-    ALWAYS test with a fresh throwaway account and one client only&#xD;
-    before migrating real notes. See the README "Sync-Loop / Duplicate&#xD;
-    Notes Guardrails" and docs/sync-loop-troubleshooting.md.&#xD;
+    Hostname "localstack" resolution:&#xD;
+      User-defined Docker network: put both containers on the same&#xD;
+        custom bridge and give LocalStack the network alias "localstack".&#xD;
+      br0 / macvlan / VLAN / static-IP install: put LocalStack on the&#xD;
+        same VLAN with a fixed IP, then append&#xD;
+        --add-host=localstack:&lt;LocalStack-IP&gt; to this container's Extra&#xD;
+        Parameters and restart. Verify with:&#xD;
+          docker exec StandardNotesServer getent hosts localstack&#xD;
     &#xD;
-    LOCALSTACK / ENOTFOUND localstack WARNING:&#xD;
-    If /var/lib/server/logs/files-worker.log shows "getaddrinfo&#xD;
-    ENOTFOUND localstack" (e.g. "SQSError: SQS receive message failed:&#xD;
-    getaddrinfo ENOTFOUND localstack"), install / start the&#xD;
-    StandardNotes-LocalStack companion and ensure the hostname&#xD;
-    "localstack" resolves from this container BEFORE testing notes.&#xD;
-    Quick check from the Unraid host:&#xD;
-      docker exec StandardNotesServer getent hosts localstack&#xD;
-    Must print a non-empty line. If empty, this container is not on&#xD;
-    the same user-defined Docker network as the LocalStack container.&#xD;
-    Two working fixes:&#xD;
-      A) USER-DEFINED DOCKER NETWORK (shared bridge): put both&#xD;
-         containers on the same custom bridge and give the LocalStack&#xD;
-         container the network alias "localstack" (Unraid: Advanced&#xD;
-         → Network alias). Docker's embedded DNS then resolves it.&#xD;
-      B) br0 / macvlan / VLAN / STATIC-IP install (each container&#xD;
-         has its own fixed IP on br0.&lt;vlan&gt;): install&#xD;
-         StandardNotes-LocalStack on the SAME VLAN with a fixed IP&#xD;
-         (e.g. 192.168.x.x), then APPEND this to Extra Parameters&#xD;
-         below:&#xD;
-           --add-host=localstack:&lt;LocalStack-IP&gt;&#xD;
-         Restart this container, then re-run getent hosts localstack&#xD;
-         — it must return that IP.&#xD;
-    Redis test for the same static-IP setup: do NOT rely on&#xD;
-    `docker run --rm redis:7-alpine redis-cli ... ping` from the&#xD;
-    default bridge — it usually cannot route to a VLAN container and&#xD;
-    will time out even when Redis is healthy. The authoritative test&#xD;
-    runs INSIDE this container with a node TCP probe to the real&#xD;
-    Redis IP — see README § 0 and docs/sync-loop-troubleshooting.md.&#xD;
-    &#xD;
-    Image tag (Repository field above): defaults to&#xD;
-    standardnotes/server:latest. To pin a known-good release, change&#xD;
-    the tag in the Repository field, e.g. standardnotes/server:1.32.0.&#xD;
-    Downgrading across schema migrations can leave the database&#xD;
-    unreadable to the older image.&#xD;
+    Notes can duplicate in seconds if Redis, LocalStack, COOKIE_DOMAIN,&#xD;
+    the reverse proxy, or the image tag is misconfigured. Always test&#xD;
+    with a fresh throwaway account and one client first. See the README&#xD;
+    section "Sync-Loop / Duplicate Notes Guardrails".&#xD;
   </Overview>
   <Category>Productivity: Cloud: Security:</Category>
   <WebUI>http://[IP]:[PORT:3000]/healthcheck</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/templates/standardnotes-server.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/.github/assets/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/junkerderprovinz/standardnotes-server/main/.github/assets/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>A separately running MariaDB container, a Redis container, and the StandardNotes-LocalStack companion (required companion for the official Standard Notes server image — the worker resolves hostname "localstack" for SNS / SQS; if logs show "getaddrinfo ENOTFOUND localstack", install / start LocalStack and ensure the hostname resolves before testing notes). On br0 / macvlan / VLAN / static-IP installs, give LocalStack a fixed IP on the same VLAN and APPEND `--add-host=localstack:&lt;LocalStack-IP&gt;` to Extra Parameters below. See the project README for details.</Requires>
+  <Requires>A separately running MariaDB container, a Redis container, and the StandardNotes-LocalStack companion. The server resolves the hostname "localstack" at port 4566 for SNS / SQS. On br0 / macvlan / VLAN / static-IP installs, give LocalStack a fixed IP on the same VLAN and APPEND `--add-host=localstack:&lt;LocalStack-IP&gt;` to Extra Parameters. See the project README.</Requires>
 
   <!-- ========================================================
        PORTS
        ======================================================== -->
   <Config Name="API / Gateway Port" Target="3000" Default="3000" Mode="tcp"
-          Description="HTTP port of the Standard Notes API gateway. Put behind a reverse proxy with HTTPS — do NOT expose directly to the public internet."
+          Description="HTTP port of the Standard Notes API gateway. Put behind a reverse proxy with HTTPS. Do not expose directly to the public internet."
           Type="Port" Display="always" Required="true" Mask="false">3000</Config>
 
   <!-- Files Server Port is defined further below, directly under Public Files Server URL. -->
@@ -145,7 +93,7 @@
   <Config Name="Uploads Path"
           Target="/opt/server/packages/files/dist/uploads"
           Default="/mnt/user/appdata/standardnotes/uploads" Mode="rw"
-          Description="Persistent storage for the encrypted file uploads served by the files server."
+          Description="Persistent storage for encrypted file uploads."
           Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/standardnotes/uploads</Config>
 
   <!-- ========================================================
@@ -160,7 +108,7 @@
           Type="Variable" Display="always" Required="true" Mask="false">3306</Config>
 
   <Config Name="MariaDB User" Target="DB_USERNAME" Default="std_notes_user" Mode=""
-          Description="Database user. Must match the user you created in MariaDB."
+          Description="Database user. Must match the user created in MariaDB."
           Type="Variable" Display="always" Required="true" Mask="false">std_notes_user</Config>
 
   <Config Name="MariaDB Password" Target="DB_PASSWORD" Default="" Mode=""
@@ -168,11 +116,11 @@
           Type="Variable" Display="always" Required="true" Mask="true"/>
 
   <Config Name="MariaDB Database Name" Target="DB_DATABASE" Default="standard_notes_db" Mode=""
-          Description="Database name. Must already exist (empty is fine — migrations run on first start)."
+          Description="Database name. Must already exist. Empty is fine; migrations run on first start."
           Type="Variable" Display="always" Required="true" Mask="false">standard_notes_db</Config>
 
   <Config Name="Database Driver" Target="DB_TYPE" Default="mysql" Mode=""
-          Description="Leave at 'mysql'. INTERNAL DRIVER VALUE REQUIRED FOR MARIADB — Standard Notes / TypeORM uses the 'mysql' driver string to talk to MariaDB. Do not change."
+          Description="Leave at 'mysql'. Internal TypeORM driver value used to talk to MariaDB. Do not change."
           Type="Variable" Display="advanced" Required="true" Mask="false">mysql</Config>
 
   <!-- ========================================================
@@ -183,7 +131,7 @@
           Type="Variable" Display="always" Required="true" Mask="false">192.168.x.x</Config>
 
   <Config Name="Redis Port" Target="REDIS_PORT" Default="6379" Mode=""
-          Description="REQUIRED. Redis server port. Default 6379. Reachability test must run INSIDE this container (same network namespace the server uses): docker exec StandardNotesServer node -e &quot;net.connect(6379,'&lt;redis-host&gt;').on('connect',()=>{console.log('OK');process.exit(0)}).on('error',e=>{console.error(e.message);process.exit(1)})&quot;. On br0 / macvlan / VLAN / static-IP setups, a `docker run --rm redis:7-alpine redis-cli ... ping` from the default bridge is NOT a reliable test (it cannot route to a VLAN container) — that image is only a disposable redis-cli client, not a second Redis server."
+          Description="Redis server port. Default 6379. Reachability must be tested from inside this container (same network namespace the server uses). See README for the exact node TCP probe."
           Type="Variable" Display="always" Required="true" Mask="false">6379</Config>
 
   <Config Name="Cache Backend" Target="CACHE_TYPE" Default="redis" Mode=""
@@ -191,37 +139,37 @@
           Type="Variable" Display="advanced" Required="true" Mask="false">redis</Config>
 
   <!-- ========================================================
-       SECRETS  — generate with `openssl rand -hex 32`
+       SECRETS  - generate with `openssl rand -hex 32`
        ======================================================== -->
   <Config Name="JWT Secret" Target="AUTH_JWT_SECRET" Default="" Mode=""
-          Description="REQUIRED. 32-byte hex secret. Generate with: openssl rand -hex 32. Changing this invalidates all existing sessions."
+          Description="Required. 32-byte hex secret. Generate with: openssl rand -hex 32. Changing this invalidates all existing sessions."
           Type="Variable" Display="always" Required="true" Mask="true"/>
 
   <Config Name="Auth Server Encryption Key"
           Target="AUTH_SERVER_ENCRYPTION_SERVER_KEY" Default="" Mode=""
-          Description="REQUIRED. 32-byte hex secret. Generate with: openssl rand -hex 32. Encrypts data at rest server-side. Losing this means losing access to that data — back it up."
+          Description="Required. 32-byte hex secret. Generate with: openssl rand -hex 32. Encrypts data at rest server-side. Back it up. Losing it means losing access to that data."
           Type="Variable" Display="always" Required="true" Mask="true"/>
 
   <Config Name="Valet Token Secret"
           Target="VALET_TOKEN_SECRET" Default="" Mode=""
-          Description="REQUIRED. 32-byte hex secret. Generate with: openssl rand -hex 32. Signs short-lived upload/download tokens for the files server."
+          Description="Required. 32-byte hex secret. Generate with: openssl rand -hex 32. Signs short-lived upload/download tokens for the files server."
           Type="Variable" Display="always" Required="true" Mask="true"/>
 
   <!-- ========================================================
-       PUBLIC URLs / COOKIES (visible — needed for client setup)
+       PUBLIC URLs / COOKIES (visible - needed for client setup)
        ======================================================== -->
   <Config Name="Public Files Server URL"
           Target="PUBLIC_FILES_SERVER_URL" Default="" Mode=""
-          Description="Optional. FULL HTTPS URL of the files server (attachments) — INCLUDES the https:// scheme. Example: https://files.standardnotesserver.mydomain.tld. Set ONLY if you reverse-proxy the files server on its own subdomain (see Files Server Port below). Leave empty to skip attachments — note creation, editing, and sync work without it. Single-domain path proxying is not reliably supported by the upstream image."
+          Description="Optional. Full HTTPS URL of the files server. Includes the https:// scheme. Example: https://files.standardnotesserver.mydomain.tld. Set only if you reverse-proxy the files server on its own subdomain. Leave empty to skip attachments; note creation, editing, and sync work without it."
           Type="Variable" Display="always" Required="false" Mask="false"/>
 
   <Config Name="Files Server Port" Target="3104" Default="3125" Mode="tcp"
-          Description="Host port 3125 → container port 3104. Upstream's docker-compose.example.yml maps the host's 3125 to the internal files service on 3104, so this template uses Target=3104 (container) with Default=3125 (host). In Unraid / Nginx Proxy Manager forward attachment traffic to host port 3125 (NOT 3104). Recipe: NPM Proxy Host with Domain Names = files.standardnotesserver.mydomain.tld, Scheme = http, Forward Hostname/IP = StandardNotesServer container IP, Forward Port = 3125, Websockets ON, SSL tab → Let's Encrypt + Force SSL + HTTP/2. Then set Public Files Server URL above to https://files.standardnotesserver.mydomain.tld."
+          Description="Host port 3125 maps to container port 3104. Forward your reverse proxy to host port 3125 (not 3104). Upstream's docker-compose maps 3125 host to 3104 container."
           Type="Port" Display="always" Required="true" Mask="false">3125</Config>
 
   <Config Name="Cookie Domain"
           Target="COOKIE_DOMAIN" Default="" Mode=""
-          Description="BARE DOMAIN ONLY — NO protocol, NO https://, NO trailing slash, NO path. Example: standardnotesserver.mydomain.tld (correct). Wrong: https://standardnotesserver.mydomain.tld (this is a URL, not a domain — putting it here breaks session cookies). Must match the public host your reverse proxy serves over HTTPS. The Custom Sync Server URL entered into Standard Notes clients/web app is a separate value and IS a full HTTPS URL: https://standardnotesserver.mydomain.tld. HTTPS is required for Secure cookies outside localhost. A wrong COOKIE_DOMAIN (especially one with https:// in it) triggers 'No cookies provided for cookie-based session token' and a /v1/items session loop that has been linked to runaway note duplication. See docs/sync-loop-troubleshooting.md."
+          Description="Bare domain only. No https://, no trailing slash, no path. Example: standardnotesserver.mydomain.tld. Wrong: https://standardnotesserver.mydomain.tld. A URL here breaks session cookies. The Custom Sync Server URL entered into clients is a separate value and is a full HTTPS URL."
           Type="Variable" Display="always" Required="false" Mask="false"/>
 
 </Container>
