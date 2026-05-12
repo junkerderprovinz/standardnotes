@@ -380,6 +380,18 @@ What it does do:
   the required companion `StandardNotes-LocalStack` (SNS / SQS). The
   browser client lives in the companion repo as its own
   `StandardNotes` template.
+- **Two templates from one CA submission.** Once this repo is listed
+  on the Unraid Community Applications feed, both
+  `StandardNotesServer` and `StandardNotes-LocalStack` appear as
+  **separate installable apps** in the Unraid **Apps** tab even
+  though they ship from the same GitHub repo and `ca_profile.xml`
+  maintainer. Install them one at a time, in the install order
+  documented in [§ 2](#install-order-mandatory). The browser client
+  (`StandardNotes`) appears as a third, separate app from the
+  companion [`standardnotes-webui`](https://github.com/junkerderprovinz/standardnotes-webui)
+  repo. *(CA's exact list grouping in the UI may vary; what matters is
+  that each of the three templates is installed as its own container,
+  not bundled.)*
 - **Sane defaults** taken from the upstream
   [`.env.sample`](https://github.com/standardnotes/server/blob/main/.env.sample).
 - **Every secret marked `Mask="true"`** in the template, so the Unraid UI
@@ -465,6 +477,47 @@ The Standard Notes server image talks to:
   contributing to duplication. Earlier passes called LocalStack
   *optional*; live installs show it is required for a stable full
   install.
+
+### Why each component is required
+
+| Component | Role | What breaks if missing |
+|---|---|---|
+| **MariaDB** | Persistent store for users, items (encrypted note blobs), sessions, settings and migration metadata. | Server fails to start — no schema, no auth, no notes. |
+| **Redis** | Cache, ephemeral session state, rate-limit counters, sync deduplication state shared across worker processes. | Sessions and `/v1/items` sync state are not deduplicated correctly across requests; `ECONNREFUSED` / timeout in logs; sync loops and duplicate notes become possible. |
+| **StandardNotes-LocalStack** | Emulates AWS SNS topics and SQS queues that `standardnotes/server` workers (auth, syncing-server, files, revisions, analytics, scheduler) publish to and consume from. Bootstrap script pre-creates the exact topics / queues upstream expects. | `files-worker.log` fills with `getaddrinfo ENOTFOUND localstack`; even when TCP-reachable but **unbootstrapped**, account creation hangs and the first note duplicates infinitely. |
+| **StandardNotesServer** | Standard Notes API gateway, sync server, auth server and files server, all in one image. End-to-end-encrypted note bodies are stored encrypted; the server cannot read them. | The whole stack — no API to talk to. |
+| **StandardNotes (WebUI)** *(separate repo)* | Official `standardnotes/web` browser client. Pure static UI served on container port `80`; the sync server is configured per-browser at runtime via *Advanced options → Custom Sync Server*. | Optional — desktop / mobile apps work without it. Without it you simply have no browser client. |
+
+### Install order (mandatory)
+
+The components must be brought up in this order. Each step expects the
+previous step to already be reachable from the Unraid host *and* from
+inside the next container.
+
+1. **MariaDB** (external, your existing container). Create
+   `standard_notes_db` and a `std_notes_user` with `ALL PRIVILEGES`
+   on it before continuing. See [§ 5](#5-database--cache).
+2. **Redis** (external, your existing container). Default port `6379`,
+   no auth, on a network the server container can route to. See
+   [§ 5](#5-database--cache).
+3. **StandardNotes-LocalStack** (this repo, companion). Drop the
+   bootstrap script on the Unraid host **before** first start so the
+   init hook runs automatically (see [§ 3 Step 2](#step-2--start-localstack-required-companion)).
+4. **StandardNotesServer** (this repo, main template). On
+   `br0` / macvlan / VLAN / static-IP installs, append
+   `--add-host=localstack:<LocalStack-IP>` to *Extra Parameters*
+   **before** starting it for the first time — Docker's embedded DNS
+   does not resolve container names across `br0` / macvlan, and
+   without `--add-host` the workers cannot find `localstack`.
+5. **StandardNotes (WebUI)** *(optional)* from the separate companion
+   repo [`standardnotes-webui`](https://github.com/junkerderprovinz/standardnotes-webui).
+   Install last — it only needs the backend's public HTTPS URL.
+6. **Reverse-proxy hosts (NPM / SWAG / Traefik / Caddy)** for the
+   backend, optional files server, and WebUI. These can be created any
+   time after the corresponding container is running, but **must exist
+   before** a real client (desktop, mobile, browser) is pointed at the
+   server — clients require HTTPS, and `Secure` session cookies are
+   dropped over plain HTTP. See [§ 8](#8-reverse-proxy).
 
 ---
 

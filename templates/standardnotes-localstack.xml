@@ -35,6 +35,18 @@
     fixed set of SNS topics and SQS queues. The "LocalStack Bootstrap&#xD;
     Script" path mapping below mounts the bootstrap script into&#xD;
     /etc/localstack/init/ready.d/ where LocalStack runs it on ready.&#xD;
+    &#xD;
+    Automatic bootstrap on container start runs ONLY when ALL THREE&#xD;
+    of the following are true at first start:&#xD;
+      a) the host file /mnt/user/appdata/standardnotes/localstack_bootstrap.sh&#xD;
+         exists,&#xD;
+      b) it is executable (chmod +x),&#xD;
+      c) the "LocalStack Bootstrap Script" Path mapping is left at its&#xD;
+         default (mapped to /etc/localstack/init/ready.d/localstack_bootstrap.sh).&#xD;
+    LocalStack's init/ready.d/ hook fires ONCE per container lifetime.&#xD;
+    If the script was missing on first start, restart the container or&#xD;
+    use the README emergency-bootstrap one-liner to populate it in place.&#xD;
+    &#xD;
     Before first start, on the Unraid host:&#xD;
       mkdir -p /mnt/user/appdata/standardnotes&#xD;
       curl -fsSL -o /mnt/user/appdata/standardnotes/localstack_bootstrap.sh \&#xD;

@@ -42,6 +42,33 @@ Standard-Notes-specific:
 Pairing them in one repo (and one CA submission) keeps the install
 path "one Apps page, two clicks" and avoids cross-repo drift.
 
+### How users see this in the Unraid Apps tab
+
+CA indexes templates **per template file**, not per repo. A single
+GitHub repo containing multiple `templates/*.xml` files is published
+as **multiple separate installable apps** on the Apps tab, each with
+its own *Install* button, even though all of them share one
+`ca_profile.xml` maintainer entry. For this repo that means:
+
+- `StandardNotesServer` — appears as its own app card.
+- `StandardNotes-LocalStack` — appears as its own app card.
+
+Both link back to the same `ca_profile.xml` Profile / WebPage / Repo
+(this repo). Users install them **one at a time**, in the order
+documented in the README's *Install order (mandatory)* section
+(MariaDB → Redis → LocalStack → Server → WebUI).
+
+The browser client (`StandardNotes`) is **not** part of this CA
+submission — it ships from the separate `standardnotes-webui` repo
+and is published as its own CA submission. CA users will therefore
+see three Standard-Notes-related app cards in total: two from this
+repo, one from the WebUI repo.
+
+*(The exact UI grouping CA chooses — e.g. whether the two templates
+in this repo are visually grouped under the maintainer or listed
+alongside other Productivity apps — can vary across CA UI versions.
+What matters is that each template installs as its own container.)*
+
 ---
 
 ## 1. Repo State
