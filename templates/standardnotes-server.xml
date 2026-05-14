@@ -7,7 +7,7 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/junkerderprovinz/standardnotes-server/issues</Support>
+  <Support>https://forums.unraid.net/topic/198819-support-junkerderprovinz-standard-notes-server/</Support>
   <Project>https://standardnotes.com</Project>
   <Overview>
     Standard Notes self-hosted backend for Unraid (community template).&#xD;
